@@ -1,0 +1,45 @@
+# Node
+node_modules/
+dist/
+lib/
+build/
+
+# Environment
+.env
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+*.log
+
+# TypeScript
+*.tsbuildinfo
+
+# Coverage
+coverage/
+
+# OS files
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
+
+# Misc
+.pnp.js
+.pnp/
+
+# Database
+*.sqlite
+*.sqlite3
+
+# Uploaded files
+uploads/
+
+# Optional runtime files
+npm-debug.log
+

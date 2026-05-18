@@ -80,7 +80,7 @@ export const initialSpecies: Species[] = [
     { id: 'species_bream', commonName: 'Bream', scientificName: 'Acanthopagrus australis', imageUrl: 'https://example.com/bream.jpg' }
 ];
 
-export const db = {
+const db = {
     users: new Map<string, User>(),
     catches: new Map<string, Catch>(),
     posts: new Map<string, Post>(),
@@ -91,3 +91,19 @@ export const db = {
     follows: new Set<string>(),
     refreshTokens: new Set<string>()
 };
+
+export function getData() {
+    return db;
+}
+
+export function setData(newData: typeof db) {
+    Object.keys(newData).forEach(key => {
+        if (Array.isArray(newData[key])) {
+            db[key] = [...newData[key]];
+        } else if (newData[key] instanceof Map) {
+            db[key] = new Map(newData[key]);
+        } else if (newData[key] instanceof Set) {
+            db[key] = new Set(newData[key]);
+        }
+    });
+}

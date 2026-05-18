@@ -2,34 +2,20 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import { v4 as uuid } from 'uuid';
+import { getData } from './data';
 
-type AuthedRequest = Request & { userId: string };
+type AuthedRequest = Request
+
+const upload = multer({ storage: multer.memoryStorage() });
+
+// Replace local db with shared data module
+const db = getData();
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-const upload = multer({ storage: multer.memoryStorage() });
-
-const db = {
-  users: new Map(),
-  catches: new Map(),
-  posts: new Map(),
-  comments: new Map(),
-  badges: [
-    { id: 'badge_first_catch', name: 'First Catch', description: 'Log your first catch.', conditionType: 'first_catch', conditionValue: 1 },
-    { id: 'badge_flathead_hunter', name: 'Flathead Hunter', description: 'Catch 5 flathead.', conditionType: 'species_count', conditionValue: 5, speciesId: 'species_flathead' }
-  ],
-  species: [
-    { id: 'species_flathead', commonName: 'Flathead', scientificName: 'Platycephalidae', imageUrl: 'https://example.com/flathead.jpg' },
-    { id: 'species_bream', commonName: 'Bream', scientificName: 'Acanthopagrus australis', imageUrl: 'https://example.com/bream.jpg' }
-  ],
-  likes: new Set(),
-  follows: new Set(),
-  refreshTokens: new Set()
-};
-
 const now = () => new Date().toISOString();
-const token = (prefix) => `${prefix}_${uuid()}`;
+const token = (prefix: string) => `${prefix}_${uuid()}`;
 const auth = (req: Request, _res: Response, next: NextFunction) => { (req as AuthedRequest).userId = req.header('x-user-id') || 'user_demo'; if (!db.users.has((req as AuthedRequest).userId)) db.users.set((req as AuthedRequest).userId, { id: (req as AuthedRequest).userId, username: 'fishmaster', email: 'user@example.com', badges: [], createdAt: now() }); next(); };
 
 function paginate(items, limit = 20, cursor = null) {

@@ -5,7 +5,8 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/server.js",
-    "dev": "ts-node src/server.ts"
+    "dev": "ts-node src/server.ts",
+    "serve": "npm run build && npm start"
   },
   "dependencies": {
     "cors": "^2.8.5",
