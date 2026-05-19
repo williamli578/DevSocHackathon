@@ -1,15 +1,52 @@
 // Profile screen
 
-function Profile({ onOpen, showStats, density }) {
+function Profile({ viewer, onOpen, showStats, density }) {
   const D = window.DATA;
   const [tab, setTab] = React.useState("catches");
-  // show Marlo as default profile
-  const user = D.userById("u_marlo");
-  const userCatches = D.CATCHES.filter((c) => c.userId === user.id).concat(
-    // pad with other catches for layout
-    D.CATCHES.filter((c) => c.userId !== user.id).slice(0, 5)
-  );
-  const userBadges = D.BADGES.filter((b) => b.earned);
+  const [apiUser, setApiUser] = React.useState(null);
+  const [apiBadges, setApiBadges] = React.useState(null);
+
+  React.useEffect(() => {
+    if (!window.API) return;
+    window.API.getMe().then(u => {
+      setApiUser(u);
+      return window.API.getUserBadges(u.id || window.API.getUserId());
+    }).then(data => {
+      setApiBadges(data && data.items ? data.items : []);
+    }).catch(() => { setApiBadges([]); });
+  }, []);
+
+  // When API user exists, use only API data — never fall back to mock stats
+  const user = React.useMemo(() => {
+    if (apiUser) {
+      const handle = apiUser.username || apiUser.name || "angler";
+      return {
+        id: apiUser.id || (window.API && window.API.getUserId()),
+        name: apiUser.username || apiUser.name || "Angler",
+        handle,
+        initial: handle[0].toUpperCase(),
+        bio: apiUser.bio || "",
+        region: apiUser.region || "",
+        catches: apiUser.catchCount ?? 0,
+        species: apiUser.speciesCount ?? 0,
+        badges: apiUser.badgeCount ?? 0,
+        followers: apiUser.followerCount ?? 0,
+        points: apiUser.points ?? 0,
+      };
+    }
+    return viewer || D.userById("u_you");
+  }, [apiUser, viewer]);
+
+  const userCatches = D.CATCHES.filter((c) => c.userId === user.id);
+  const badges = apiBadges !== null
+    ? D.BADGES.map(b => {
+        const earned = apiBadges.some(ab => ab.id === b.id || ab.name === b.name);
+        return earned ? { ...b, earned: true } : { ...b, earned: false, progress: 0 };
+      })
+    : apiUser
+      ? D.BADGES.map(b => ({ ...b, earned: false, progress: 0 }))
+      : D.BADGES;
+  const userBadges = badges.filter((b) => b.earned);
 
   return (
     <React.Fragment>
@@ -42,9 +79,8 @@ function Profile({ onOpen, showStats, density }) {
             </div>
           </div>
           <div className="profile-actions">
-            <button className="btn btn-primary">Follow</button>
-            <button className="btn btn-ghost" style={{ background: "var(--c-surface)" }}>Message</button>
-            <button className="btn btn-ghost" style={{ background: "var(--c-surface)" }}>•••</button>
+            <button className="btn btn-primary">Edit Profile</button>
+            <button className="btn btn-ghost" style={{ background: "var(--c-surface)" }}>Share</button>
           </div>
         </div>
       </div>
@@ -60,31 +96,46 @@ function Profile({ onOpen, showStats, density }) {
         <div className="page-sub" style={{ marginTop: 0 }}>
           {tab === "catches" && `${user.catches} catches logged`}
           {tab === "trophies" && `${userCatches.filter(c=>c.trophy).length} trophies`}
-          {tab === "badges" && `${userBadges.length} earned · ${D.BADGES.length - userBadges.length} locked`}
+          {tab === "badges" && `${userBadges.length} earned · ${badges.length - userBadges.length} locked`}
           {tab === "map" && "All public catches"}
         </div>
       </div>
 
       <div className="page-body single">
-        {(tab === "catches" || tab === "trophies") && (
-          <div className="profile-grid">
-            {(tab === "trophies" ? userCatches.filter(c => c.trophy) : userCatches).map((c) => {
-              const s = D.speciesById(c.speciesId);
-              return (
-                <div key={c.id} className="tile" onClick={() => onOpen(c.id)}>
-                  <PhotoPlaceholder label={s.name} seed={c.id.charCodeAt(2)} />
-                  <div className="tag">
-                    <span>{s.name}</span>
-                    <span>{c.lengthCm}cm</span>
-                  </div>
+        {(tab === "catches" || tab === "trophies") && (() => {
+          const items = tab === "trophies" ? userCatches.filter(c => c.trophy) : userCatches;
+          if (items.length === 0) {
+            return (
+              <div style={{ textAlign: "center", padding: "var(--gap-6) 0", color: "var(--c-muted)" }}>
+                <div style={{ fontFamily: "var(--f-display)", fontStyle: "italic", fontSize: 22, marginBottom: 8 }}>
+                  {tab === "trophies" ? "No trophies yet" : "No catches logged yet"}
                 </div>
-              );
-            })}
-          </div>
-        )}
+                <div style={{ fontSize: 13 }}>
+                  {tab === "trophies" ? "Catch something over 1m to earn a trophy." : "Head out and log your first catch!"}
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div className="profile-grid">
+              {items.map((c) => {
+                const s = D.speciesById(c.speciesId);
+                return (
+                  <div key={c.id} className="tile" onClick={() => onOpen(c.id)}>
+                    <PhotoPlaceholder label={s.name} seed={c.id.charCodeAt(2)} />
+                    <div className="tag">
+                      <span>{s.name}</span>
+                      <span>{c.lengthCm}cm</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
         {tab === "badges" && (
           <div className="badge-grid">
-            {D.BADGES.map((b) => <BadgeCard key={b.id} badge={b} />)}
+            {badges.map((b) => <BadgeCard key={b.id} badge={b} />)}
           </div>
         )}
         {tab === "map" && (

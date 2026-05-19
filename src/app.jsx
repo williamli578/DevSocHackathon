@@ -49,7 +49,7 @@ function App() {
   } else if (route === "log") {
     content = <LogCatch onClose={() => setRoute("feed")} onSubmit={() => { setCatchCount(n => n + 1); setRoute("feed"); }} />;
   } else if (route === "profile") {
-    content = <Profile onOpen={setOpenId} showStats={t.showStats} density={t.density} />;
+    content = <Profile viewer={viewer} onOpen={setOpenId} showStats={t.showStats} density={t.density} />;
   } else if (route === "leaderboard") {
     content = <Leaderboard />;
   } else if (route === "badges") {

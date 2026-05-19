@@ -36,7 +36,6 @@
     getUserId() { return userId; },
 
     async getMe() {
-      if (_me) return _me;
       _me = await apiFetch('GET', '/api/auth/me');
       return _me;
     },
@@ -142,6 +141,10 @@
 
     async updateProfile(body) {
       return apiFetch('PATCH', '/api/me/profile', body);
+    },
+
+    async getUserBadges(userId) {
+      return apiFetch('GET', '/api/users/' + userId + '/badges');
     },
   };
 })();

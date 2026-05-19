@@ -145,13 +145,33 @@ function Leaderboard() {
 function Badges() {
   const D = window.DATA;
   const [tab, setTab] = React.useState("all");
-  const list = tab === "earned" ? D.BADGES.filter(b => b.earned) : tab === "locked" ? D.BADGES.filter(b => !b.earned) : D.BADGES;
+  const [apiBadges, setApiBadges] = React.useState(null); // null = loading/no API
+
+  React.useEffect(() => {
+    if (!window.API) return;
+    window.API.getMe().then(u => {
+      return window.API.getUserBadges(u.id || window.API.getUserId());
+    }).then(data => {
+      setApiBadges(data && data.items ? data.items : []);
+    }).catch(() => setApiBadges([]));
+  }, []);
+
+  const allBadges = apiBadges !== null
+    ? D.BADGES.map(b => {
+        const earned = apiBadges.some(ab => ab.id === b.id || ab.name === b.name);
+        return earned ? { ...b, earned: true } : { ...b, earned: false, progress: 0 };
+      })
+    : D.BADGES;
+
+  const list = tab === "earned" ? allBadges.filter(b => b.earned) : tab === "locked" ? allBadges.filter(b => !b.earned) : allBadges;
+  const earnedCount = allBadges.filter(b => b.earned).length;
+
   return (
     <React.Fragment>
       <div className="page-header">
         <div>
           <h1 className="page-title">Your <em>badges</em></h1>
-          <div className="page-sub">{D.BADGES.filter(b => b.earned).length} of {D.BADGES.length} earned · Auto-unlocks after each catch</div>
+          <div className="page-sub">{earnedCount} of {allBadges.length} earned · Auto-unlocks after each catch</div>
         </div>
         <div className="tab-row">
           {["all", "earned", "locked"].map(t => (
@@ -375,29 +395,107 @@ function Search({ onOpen, onSetRoute }) {
 
 function Auth({ onComplete }) {
   const [mode, setMode] = React.useState("login");
-  const [username, setUsername] = React.useState("fishmaster");
-  const [email, setEmail] = React.useState("hello@fishstagram.app");
+  const [step, setStep] = React.useState("auth"); // "auth" | "setup"
+  const [username, setUsername] = React.useState("");
+  const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const [bio, setBio] = React.useState("");
+  const [region, setRegion] = React.useState("");
   const [error, setError] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
 
   const handleSubmit = async () => {
-    if (!window.API) { onComplete(); return; }
+    if (!window.API) {
+      if (mode === "register" && step === "auth") { setStep("setup"); return; }
+      onComplete();
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
       if (mode === "login") {
         await window.API.login(email, password);
+        onComplete();
       } else {
         await window.API.register(username, email, password);
+        setStep("setup");
       }
-      onComplete();
     } catch (e) {
       setError((e && e.error && e.error.message) || 'Something went wrong. Try again.');
     } finally {
       setLoading(false);
     }
   };
+
+  const handleSetup = async () => {
+    if (window.API && (bio.trim() || region.trim())) {
+      setLoading(true);
+      try {
+        await window.API.updateProfile({ bio: bio.trim(), region: region.trim() });
+      } catch (e) {
+        // non-fatal — proceed anyway
+      } finally {
+        setLoading(false);
+      }
+    }
+    onComplete();
+  };
+
+  if (step === "setup") {
+    return (
+      <div className="auth-shell">
+        <div className="auth-hero">
+          <div className="brand">
+            <div className="brand-mark" style={{ background: "var(--c-bg)", color: "var(--c-brand)" }}>F</div>
+            <div className="brand-name" style={{ color: "var(--c-bg)" }}>Fishstagram</div>
+          </div>
+          <div>
+            <div className="word">One more<br />thing.</div>
+            <div className="quote" style={{ marginTop: 28, opacity: 0.85 }}>
+              Tell the community a little about yourself.
+            </div>
+          </div>
+        </div>
+        <div className="auth-form-wrap">
+          <div className="auth-form">
+            <h2>Set up your profile.</h2>
+            <p className="lead">You can always change this later.</p>
+            <div className="field">
+              <label>Bio</label>
+              <input
+                className="input"
+                value={bio}
+                onChange={e => setBio(e.target.value)}
+                placeholder="Tell us about your fishing style…"
+                maxLength={160}
+              />
+            </div>
+            <div className="field">
+              <label>Region</label>
+              <input
+                className="input"
+                value={region}
+                onChange={e => setRegion(e.target.value)}
+                placeholder="e.g. Sydney, Queensland, NZ South Island"
+              />
+            </div>
+            <button
+              className="btn btn-primary"
+              style={{ width: "100%", justifyContent: "center", marginTop: 8 }}
+              onClick={handleSetup}
+              disabled={loading}
+            >
+              {loading ? "Saving…" : "Let's go fishing"}
+            </button>
+            <div className="divider" />
+            <button onClick={onComplete} style={{ fontSize: 13, color: "var(--c-muted)", background: "none", border: "none", cursor: "pointer" }}>
+              Skip for now
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="auth-shell">

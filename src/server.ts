@@ -183,7 +183,11 @@ function verifyPassword(password: string, storedHash: string) {
         const accessToken = signAccessToken(userId);
         res.json({accessToken});
     });
-    app.get('/api/auth/me', auth, (req, res) => res.json(db.users.get(req.userId)));
+    app.get('/api/auth/me', auth, (req, res) => {
+        const u = db.users.get(req.userId);
+        const catchCount = [...db.catches.values()].filter(c => c.userId === req.userId).length;
+        res.json({ ...u, catchCount });
+    });
 
     app.get('/api/users/:userId', (req, res) => {
         const u = db.users.get(req.params.userId);
