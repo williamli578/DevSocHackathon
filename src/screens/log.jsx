@@ -7,7 +7,11 @@ function LogCatch({ onClose, onSubmit }) {
   const [length, setLength] = React.useState("");
   const [weight, setWeight] = React.useState("");
   const [quantity, setQuantity] = React.useState(1);
-  const [date, setDate] = React.useState(new Date().toISOString().slice(0, 16));
+  const [date, setDate] = React.useState(() => {
+    const d = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
   const [description, setDescription] = React.useState("");
   const [locationName, setLocationName] = React.useState("Cronulla, Bate Bay");
   const [visibility, setVisibility] = React.useState("public");

@@ -22,7 +22,7 @@ app.use(express.static(path.join(root, 'src', 'screens')));
 app.use(express.static(path.join(root, 'src', 'components')));
 app.get('/', (_req, res) => res.sendFile(path.join(root, 'public', 'Fishstagram.html')));
 
-const now = () => new Date().toISOString();
+const now = () => new Date().toLocaleString('sv', { timeZone: 'Australia/Sydney' }).replace(' ', 'T');
 const token = (prefix: string) => `${prefix}_${uuid()}`;
 const auth = (req: AuthedRequest, _res: Response, next: NextFunction) => {
     req.userId = req.header('x-user-id') || 'user_demo';
@@ -129,6 +129,7 @@ app.post('/api/catches', auth, (req, res) => {
         createdAt: now(),
         updatedAt: now()
     };
+    console.log('Creating catch:', c, 'at time', now(), new Date());
     db.catches.set(id, c);
     const newBadges = [];
     const userCatches = [...db.catches.values()].filter(x => x.userId === req.userId);
