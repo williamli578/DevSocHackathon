@@ -1,19 +1,40 @@
 // Feed screen + CatchCard
 
-// Resolves a user object from mock data, falling back to a synthetic object for API users
-function resolveUser(userId) {
+function normalizeApiUser(user) {
+  if (!user) return null;
+  const handle = user.handle || user.username || user.name || user.id;
+  const name = user.name || user.username || handle || "Angler";
+  return {
+    id: user.id,
+    name,
+    handle,
+    username: user.username || handle,
+    initial: (name || handle || "?")[0].toUpperCase(),
+    region: user.region || "",
+    bio: user.bio || "",
+    profileImageUrl: user.profileImageUrl || null,
+  };
+}
+
+function cacheApiUser(user) {
+  const normalized = normalizeApiUser(user);
+  if (!normalized || !normalized.id) return null;
+  window._userCache = window._userCache || {};
+  window._userCache[normalized.id] = normalized;
+  return normalized;
+}
+
+// Resolves a user object from API data or mock data, falling back to a synthetic object
+function resolveUser(userOrId) {
+  if (userOrId && typeof userOrId === "object") {
+    return cacheApiUser(userOrId);
+  }
+  const userId = userOrId;
   const D = window.DATA;
   const mock = D.userById(userId);
   if (mock) return mock;
   const cached = window._userCache && window._userCache[userId];
-  if (cached) return {
-    id: cached.id,
-    name: cached.username,
-    handle: cached.username,
-    initial: (cached.username || '?')[0].toUpperCase(),
-    region: '',
-    bio: cached.bio || '',
-  };
+  if (cached) return cached;
   return { id: userId, name: 'Angler', handle: userId, initial: userId[0]?.toUpperCase() || 'A', region: '' };
 }
 
@@ -26,7 +47,7 @@ function resolveSpecies(c) {
 }
 
 function CatchCard({ c, density, showStats, onOpen, liked, onLike }) {
-  const user = resolveUser(c.userId);
+  const user = resolveUser(c.user || c.userId);
   const species = resolveSpecies(c);
   const compact = density === "compact";
 
@@ -125,13 +146,15 @@ function Feed({ density, showStats, onOpen, likes, onLike, onSetRoute }) {
     // Preload current user into cache so API catches render with real username
     window.API.getMe().then(me => {
       if (me) {
-        window._userCache = window._userCache || {};
-        window._userCache[me.id] = me;
+        cacheApiUser(me);
       }
     }).catch(() => {});
 
     window.API.getCatches(20).then(data => {
-      if (data && data.items) setApiCatches(data.items);
+      if (data && data.items) {
+        data.items.forEach(c => cacheApiUser(c.user));
+        setApiCatches(data.items);
+      }
     }).catch(() => {});
   }, []);
 
@@ -208,7 +231,7 @@ function Feed({ density, showStats, onOpen, likes, onLike, onSetRoute }) {
           <div className="rail-card">
             <h4>Trending this week</h4>
             {trending.filter(c => c.location).map((c, i) => {
-              const u = resolveUser(c.userId);
+              const u = resolveUser(c.user || c.userId);
               const s = resolveSpecies(c);
               return (
                 <div className="trend-row" key={c.id} onClick={() => onOpen(c.id)} style={{ cursor: "pointer" }}>
@@ -252,4 +275,4 @@ function FollowRow({ user, onClick }) {
   );
 }
 
-Object.assign(window, { Feed, CatchCard, FollowRow, resolveUser, resolveSpecies });
+Object.assign(window, { Feed, CatchCard, FollowRow, resolveUser, resolveSpecies, cacheApiUser });

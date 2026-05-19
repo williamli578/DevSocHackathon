@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import {v4 as uuid} from 'uuid';
-import {getData} from './data';
+import {getData, saveData} from './data';
 
 declare global {
     namespace Express {
@@ -44,6 +44,19 @@ db.refreshTokenToUserId ||= new Map<string, string>();
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use((req, res, next) => {
+    if (!['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method)) return next();
+    res.on('finish', () => {
+        if (res.statusCode < 500) {
+            try {
+                saveData();
+            } catch (error) {
+                console.error('Failed to persist data:', error);
+            }
+        }
+    });
+    next();
+});
 
 const root = path.join(__dirname, '..');
 app.use(express.static(path.join(root, 'public')));
@@ -62,6 +75,23 @@ function paginate<T>(items: T[], limit = 20, cursor: unknown = null) {
     const slice = items.slice(start, start + limit);
     const nextCursor = start + limit < items.length ? String(start + limit) : null;
     return {items: slice, nextCursor};
+}
+
+function publicUser(userId: string) {
+    const user = db.users.get(userId);
+    if (!user) return null;
+    return {
+        id: user.id,
+        username: user.username,
+        name: user.username,
+        handle: user.username,
+        profileImageUrl: user.profileImageUrl,
+        bio: user.bio
+    };
+}
+
+function withUser<T extends { userId: string }>(item: T) {
+    return {...item, user: publicUser(item.userId)};
 }
 
 const base64Url = (value: string | Buffer) => Buffer.from(value).toString('base64url');
@@ -121,13 +151,20 @@ function verifyPassword(password: string, storedHash: string) {
         }
         // Fallback: x-user-id header for local dev without a token
         req.userId = req.header('x-user-id') || 'user_demo';
-        if (!db.users.has(req.userId)) db.users.set(req.userId, {
-            id: req.userId,
-            username: 'fishmaster',
-            email: 'user@example.com',
-            badges: [],
-            createdAt: now()
-        });
+        if (!db.users.has(req.userId)) {
+            db.users.set(req.userId, {
+                id: req.userId,
+                username: 'fishmaster',
+                email: 'user@example.com',
+                badges: [],
+                createdAt: now()
+            });
+            try {
+                saveData();
+            } catch (error) {
+                console.error('Failed to persist demo user:', error);
+            }
+        }
         next();
     };
 
@@ -226,7 +263,7 @@ function verifyPassword(password: string, storedHash: string) {
 app.get('/api/users/:userId/catches', auth, (req, res) => {
     const {userId} = req.params;
     const v = [...db.catches.values()].filter(c => c.userId === userId && (c.visibility === 'public' || c.userId === req.userId));
-    res.json(paginate(v, Number(req.query.limit || 20), req.query.cursor));
+    res.json(paginate(v.map(withUser), Number(req.query.limit || 20), req.query.cursor));
 });
 app.get('/api/users/:userId/badges', (req, res) => {
     const u = db.users.get(req.params.userId);
@@ -289,7 +326,7 @@ app.get('/api/catches', auth, (req, res) => {
     const catches = [...db.catches.values()]
         .filter(c => c.visibility === 'public' || c.userId === req.userId)
         .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    res.json(paginate(catches, Number(req.query.limit || 20), req.query.cursor));
+    res.json(paginate(catches.map(withUser), Number(req.query.limit || 20), req.query.cursor));
 });
 app.get('/api/catches/:catchId', auth, (req, res) => {
     const c = db.catches.get(req.params.catchId);
@@ -305,7 +342,7 @@ app.get('/api/catches/:catchId', auth, (req, res) => {
             message: 'Not allowed.'
         }
     });
-    res.json(c);
+    res.json(withUser(c));
 });
 app.patch('/api/catches/:catchId', auth, (req, res) => {
     const c = db.catches.get(req.params.catchId);
@@ -383,7 +420,7 @@ app.post('/api/posts', auth, (req, res) => {
     db.posts.set(id, p);
     res.status(201).json(p);
 });
-app.get('/api/feed', auth, (req, res) => res.json(paginate([...db.posts.values()], Number(req.query.limit || 20), req.query.cursor)));
+app.get('/api/feed', auth, (req, res) => res.json(paginate([...db.posts.values()].map(withUser), Number(req.query.limit || 20), req.query.cursor)));
 app.get('/api/posts/:postId', auth, (req, res) => {
     const p = db.posts.get(req.params.postId);
     if (!p) return res.status(404).json({
@@ -392,7 +429,7 @@ app.get('/api/posts/:postId', auth, (req, res) => {
             message: 'Post not found.'
         }
     });
-    res.json(p);
+    res.json(withUser(p));
 });
 app.patch('/api/posts/:postId', auth, (req, res) => {
     const p = db.posts.get(req.params.postId);

@@ -47,7 +47,7 @@ function Detail({ catchId, onClose, liked, onLike }) {
     </div>
   );
 
-  const user = resolveUser(c.userId);
+  const user = resolveUser(c.user || c.userId);
   const species = resolveSpecies(c);
 
   const handleLike = () => {

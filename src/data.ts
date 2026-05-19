@@ -1,3 +1,6 @@
+import fs from 'fs';
+import path from 'path';
+
 export type Visibility = 'private' | 'public' | 'friends';
 
 export type Badge = {
@@ -89,21 +92,101 @@ const db = {
     species: [...initialSpecies],
     likes: new Set<string>(),
     follows: new Set<string>(),
-    refreshTokens: new Set<string>()
+    refreshTokens: new Set<string>(),
+    passwordHashes: new Map<string, string>(),
+    emailToUserId: new Map<string, string>(),
+    refreshTokenToUserId: new Map<string, string>()
 };
+
+type Db = typeof db;
+type PersistedData = {
+    users?: User[];
+    catches?: Catch[];
+    posts?: Post[];
+    comments?: Comment[];
+    badges?: Badge[];
+    species?: Species[];
+    likes?: string[];
+    follows?: string[];
+    refreshTokens?: string[];
+    passwordHashes?: Array<[string, string]>;
+    emailToUserId?: Array<[string, string]>;
+    refreshTokenToUserId?: Array<[string, string]>;
+};
+
+const defaultDataDir = path.join(__dirname, '..', 'data');
+const dataFile = process.env.FISHSTAGRAM_DATA_FILE || path.join(defaultDataDir, 'fishstagram.json');
+const dataDir = path.dirname(dataFile);
+
+function mapValues<T extends { id: string }>(items: T[] | undefined) {
+    return new Map((items || []).map(item => [item.id, item]));
+}
+
+function serialize(): PersistedData {
+    return {
+        users: [...db.users.values()],
+        catches: [...db.catches.values()],
+        posts: [...db.posts.values()],
+        comments: [...db.comments.values()],
+        badges: db.badges,
+        species: db.species,
+        likes: [...db.likes],
+        follows: [...db.follows],
+        refreshTokens: [...db.refreshTokens],
+        passwordHashes: [...db.passwordHashes],
+        emailToUserId: [...db.emailToUserId],
+        refreshTokenToUserId: [...db.refreshTokenToUserId]
+    };
+}
+
+function hydrate(data: PersistedData) {
+    db.users = mapValues(data.users);
+    db.catches = mapValues(data.catches);
+    db.posts = mapValues(data.posts);
+    db.comments = mapValues(data.comments);
+    db.badges = data.badges || [...initialBadges];
+    db.species = data.species || [...initialSpecies];
+    db.likes = new Set(data.likes || []);
+    db.follows = new Set(data.follows || []);
+    db.refreshTokens = new Set(data.refreshTokens || []);
+    db.passwordHashes = new Map(data.passwordHashes || []);
+    db.emailToUserId = new Map(data.emailToUserId || []);
+    db.refreshTokenToUserId = new Map(data.refreshTokenToUserId || []);
+}
+
+export function loadData() {
+    if (!fs.existsSync(dataFile)) return;
+    try {
+        const raw = fs.readFileSync(dataFile, 'utf8');
+        if (!raw.trim()) return;
+        hydrate(JSON.parse(raw));
+    } catch (error) {
+        console.error('Failed to load persisted data:', error);
+    }
+}
+
+export function saveData() {
+    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+    const tmpFile = `${dataFile}.tmp`;
+    fs.writeFileSync(tmpFile, JSON.stringify(serialize(), null, 2));
+    fs.renameSync(tmpFile, dataFile);
+}
+
+loadData();
 
 export function getData() {
     return db;
 }
 
-export function setData(newData: typeof db) {
+export function setData(newData: Db) {
     Object.keys(newData).forEach(key => {
-        if (Array.isArray(newData[key])) {
-            db[key] = [...newData[key]];
-        } else if (newData[key] instanceof Map) {
-            db[key] = new Map(newData[key]);
-        } else if (newData[key] instanceof Set) {
-            db[key] = new Set(newData[key]);
+        const value = (newData as any)[key];
+        if (Array.isArray(value)) {
+            (db as any)[key] = [...value];
+        } else if (value instanceof Map) {
+            (db as any)[key] = new Map(value);
+        } else if (value instanceof Set) {
+            (db as any)[key] = new Set(value);
         }
     });
 }
