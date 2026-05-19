@@ -27,6 +27,7 @@ window.DATA = (() => {
     {
       id: "c_1", userId: "u_priya", speciesId: "kingfish",
       lengthCm: 102, weightKg: 14.2, quantity: 1,
+      imageUrls: ["/images/kingfish.jpg"],
       caughtAt: "2026-05-17T06:42:00Z",
       description: "Hit a slow trolled live yakka right on the colour change. Twenty minute fight, broke me into the rocks twice before I bullied him out. Released after the photo.",
       location: { latitude: -25.27, longitude: 152.84, name: "Rooney's Point, Hervey Bay" },
@@ -39,6 +40,7 @@ window.DATA = (() => {
     {
       id: "c_2", userId: "u_finn", speciesId: "trout",
       lengthCm: 48, weightKg: 1.4,
+      imageUrls: ["/images/trout.jpg"],
       caughtAt: "2026-05-16T07:15:00Z",
       description: "Tied on a size 16 elk hair caddis at first light. Pool below the deadfall on the Eucumbene. Took five drifts, then he ate it.",
       location: { latitude: -36.32, longitude: 148.62, name: "Eucumbene River" },
@@ -50,6 +52,7 @@ window.DATA = (() => {
     {
       id: "c_3", userId: "u_diego", speciesId: "snapper",
       lengthCm: 76, weightKg: 6.8,
+      imageUrls: ["/images/snapper.jpg"],
       caughtAt: "2026-05-16T18:30:00Z",
       description: "Dusk bite. Whole pilchard on a paternoster, drifting over the 28m reef. Boat lit up for ten minutes — kept this one, released two smaller.",
       location: { latitude: -38.21, longitude: 144.96, name: "South Channel, Port Phillip" },
@@ -62,6 +65,7 @@ window.DATA = (() => {
     {
       id: "c_4", userId: "u_marlo", speciesId: "flathead",
       lengthCm: 64, weightKg: 2.3,
+      imageUrls: ["/images/flathead.jpg"],
       caughtAt: "2026-05-15T09:45:00Z",
       description: "Walked the south bank at low tide. Soft plastic in motor oil, slow hops along the drop-off. Came up out of nowhere.",
       location: { latitude: -34.05, longitude: 151.15, name: "Cronulla, Bate Bay" },
@@ -73,6 +77,7 @@ window.DATA = (() => {
     {
       id: "c_5", userId: "u_lena", speciesId: "whiting",
       lengthCm: 38, weightKg: 0.6,
+      imageUrls: ["/images/whiting.jpg"],
       caughtAt: "2026-05-15T05:50:00Z",
       description: "First light beach session. Worked a popper across the gutter, three takes in ten casts. This one couldn't help itself.",
       location: { latitude: -33.89, longitude: 151.27, name: "Bondi" },
@@ -84,6 +89,7 @@ window.DATA = (() => {
     {
       id: "c_6", userId: "u_sage", speciesId: "bream",
       lengthCm: 32, weightKg: 0.5,
+      imageUrls: ["/images/bream.png"],
       caughtAt: "2026-05-14T16:20:00Z",
       description: "Under the jetty on a hardbody. Hooked four pylons before I got him out.",
       location: { latitude: -34.42, longitude: 150.89, name: "Wollongong Harbour" },
@@ -95,6 +101,7 @@ window.DATA = (() => {
     {
       id: "c_7", userId: "u_priya", speciesId: "tuna",
       lengthCm: 112, weightKg: 28.4,
+      imageUrls: ["/images/tuna.jpg"],
       caughtAt: "2026-05-13T14:00:00Z",
       description: "Found a bait ball pushing west of the shelf. Trolled a spread, this one ate a skirted lure on the long rigger. Boat went sideways.",
       location: { latitude: -25.15, longitude: 153.22, name: "Off Hervey Bay shelf" },
@@ -107,6 +114,7 @@ window.DATA = (() => {
     {
       id: "c_8", userId: "u_diego", speciesId: "mulloway",
       lengthCm: 118, weightKg: 18.6,
+      imageUrls: ["/images/mulloway.jpg"],
       caughtAt: "2026-05-12T22:10:00Z",
       description: "Night session, fresh squid head, big tide. Heard the screams from three boats over.",
       location: { latitude: -38.18, longitude: 144.92, name: "Mud Islands" },
@@ -119,6 +127,7 @@ window.DATA = (() => {
     {
       id: "c_9", userId: "u_finn", speciesId: "bass",
       lengthCm: 41, weightKg: 1.1,
+      imageUrls: ["/images/bass.jpg"],
       caughtAt: "2026-05-11T19:30:00Z",
       description: "Surface walker at dusk. Pure aggression — the strike sounded like someone dropped a brick in the river.",
       location: { latitude: -33.42, longitude: 150.31, name: "Nepean River" },

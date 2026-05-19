@@ -53,7 +53,10 @@ function CatchCard({ c, density, showStats, onOpen, liked, onLike }) {
         </button>
       </header>
       <div className="cc-photo">
-        <PhotoPlaceholder label={photoLabel} seed={c.id.charCodeAt(2)} />
+        {c.imageUrls && c.imageUrls.length > 0
+          ? <img src={c.imageUrls[0]} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+          : <PhotoPlaceholder label={photoLabel} seed={c.id.charCodeAt(2)} />
+        }
         <div className="cc-overlay">
           <span className="cc-tag species">{species.name}</span>
           {c.trophy ? <span className="cc-tag" style={{ background: "var(--c-accent)" }}>TROPHY</span> : null}

@@ -87,10 +87,10 @@ function Detail({ catchId, onClose, liked, onLike }) {
       <button className="detail-close" onClick={onClose}><Ico.Close width="20" height="20" /></button>
       <div className="detail-modal" onClick={e => e.stopPropagation()}>
         <div className="detail-photo">
-          <PhotoPlaceholder
-            label={`${species.name.toUpperCase()} · ${c.lengthCm || '?'}cm`}
-            seed={c.id.charCodeAt(2)}
-          />
+          {c.imageUrls && c.imageUrls.length > 0
+            ? <img src={c.imageUrls[0]} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+            : <PhotoPlaceholder label={`${species.name.toUpperCase()} · ${c.lengthCm || '?'}cm`} seed={c.id.charCodeAt(2)} />
+          }
           {c.trophy ? (
             <div style={{ position: "absolute", top: 16, left: 16 }}>
               <span className="cc-tag" style={{ background: "var(--c-accent)" }}>TROPHY CATCH</span>

@@ -2,7 +2,8 @@
 
 function LogCatch({ onClose, onSubmit }) {
   const D = window.DATA;
-  const [photos, setPhotos] = React.useState([true, false, false, false]);
+  const [photos, setPhotos] = React.useState([null, null, null, null]);
+  const fileRefs = [React.useRef(), React.useRef(), React.useRef(), React.useRef()];
   const [speciesId, setSpeciesId] = React.useState("flathead");
   const [length, setLength] = React.useState("");
   const [weight, setWeight] = React.useState("");
@@ -76,13 +77,27 @@ function LogCatch({ onClose, onSubmit }) {
     return () => { map.remove(); };
   }, []);
 
-  const togglePhoto = (i) => {
-    const copy = [...photos];
-    copy[i] = !copy[i];
-    // shift filled photos to the front
-    const filled = copy.filter(Boolean);
-    const empty = copy.filter((x) => !x);
-    setPhotos([...filled.map(() => true), ...empty.map(() => false)]);
+  const onFileSelect = async (i, file) => {
+    if (!file) return;
+    const previewUrl = URL.createObjectURL(file);
+    setPhotos(prev => { const c = [...prev]; c[i] = { previewUrl, url: null, uploading: true }; return c; });
+    try {
+      const data = window.API ? await window.API.uploadCatchImage(file) : { imageUrl: previewUrl };
+      setPhotos(prev => { const c = [...prev]; c[i] = { previewUrl, url: data.imageUrl, uploading: false }; return c; });
+    } catch {
+      setPhotos(prev => { const c = [...prev]; URL.revokeObjectURL(previewUrl); c[i] = null; return c; });
+    }
+  };
+
+  const removePhoto = (i) => {
+    setPhotos(prev => {
+      const c = [...prev];
+      if (c[i]?.previewUrl) URL.revokeObjectURL(c[i].previewUrl);
+      c[i] = null;
+      const filled = c.filter(Boolean);
+      while (filled.length < 4) filled.push(null);
+      return filled;
+    });
   };
 
   const speciesOpt = D.SPECIES.find((s) => s.id === speciesId);
@@ -104,10 +119,19 @@ function LogCatch({ onClose, onSubmit }) {
             <h3>Photos</h3>
             <div className="help">Up to 4 · Drop, paste, or pick from device</div>
             <div className="photo-uploader">
-              {photos.map((filled, i) => (
-                <div key={i} className={"photo-slot " + (filled ? "filled" : "")} onClick={() => togglePhoto(i)}>
-                  {filled ? (
-                    <span className="x" onClick={(e) => { e.stopPropagation(); togglePhoto(i); }}>×</span>
+              {photos.map((photo, i) => (
+                <div key={i} className={"photo-slot " + (photo ? "filled" : "")} style={{ position: "relative", overflow: "hidden" }} onClick={() => !photo && fileRefs[i].current.click()}>
+                  <input ref={fileRefs[i]} type="file" accept="image/*" style={{ display: "none" }} onChange={e => { if (e.target.files[0]) onFileSelect(i, e.target.files[0]); e.target.value = ""; }} />
+                  {photo ? (
+                    <React.Fragment>
+                      <img src={photo.previewUrl} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                      {photo.uploading && (
+                        <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                          <span style={{ color: "#fff", fontFamily: "var(--f-mono)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em" }}>Uploading…</span>
+                        </div>
+                      )}
+                      <span className="x" onClick={e => { e.stopPropagation(); removePhoto(i); }}>×</span>
+                    </React.Fragment>
                   ) : (
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
                       <Ico.Camera width="20" height="20" />
@@ -234,6 +258,7 @@ function LogCatch({ onClose, onSubmit }) {
                   quantity: Number(quantity) || 1,
                   caughtAt: date || new Date().toISOString(),
                   description,
+                  imageUrls: photos.filter(p => p && p.url).map(p => p.url),
                   location: { latitude: lat, longitude: lng, name: locationName },
                   visibility,
                   shareToFeed: shareFeed && visibility === 'public',

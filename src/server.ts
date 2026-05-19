@@ -2,6 +2,7 @@ import express, {NextFunction, Request, Response} from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import path from 'path';
+import fs from 'fs';
 import crypto from 'crypto';
 import {v4 as uuid} from 'uuid';
 import {getData} from './data';
@@ -25,7 +26,14 @@ type AuthData = ReturnType<typeof getData> & {
     refreshTokenToUserId: Map<string, string>;
 };
 
-const upload = multer({storage: multer.memoryStorage()});
+const uploadsDir = path.join(__dirname, '..', 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+const diskStorage = (multer as any).diskStorage({
+    destination: uploadsDir,
+    filename: (_req: any, file: any, cb: any) => cb(null, `${uuid()}${path.extname(file.originalname)}`),
+});
+const upload = multer({ storage: diskStorage });
 
 // Replace local db with shared data module
 const db = getData() as AuthData;
@@ -42,6 +50,7 @@ app.use(express.static(path.join(root, 'public')));
 app.use(express.static(path.join(root, 'src')));
 app.use(express.static(path.join(root, 'src', 'screens')));
 app.use(express.static(path.join(root, 'src', 'components')));
+app.use('/uploads', express.static(uploadsDir));
 app.get('/', (_req, res) => res.sendFile(path.join(root, 'public', 'Fishstagram.html')));
 
 const now = () => new Date().toLocaleString('sv', { timeZone: 'Australia/Sydney' }).replace(' ', 'T');
@@ -515,8 +524,14 @@ app.get('/api/species/:speciesId', (req, res) => {
     });
     res.json(sp);
 });
-app.post('/api/uploads/catch-image', auth, upload.single('file'), (_req, res) => res.json({imageUrl: `https://storage.example.com/catches/${uuid()}.jpg`}));
-app.post('/api/uploads/profile-image', auth, upload.single('file'), (_req, res) => res.json({imageUrl: `https://storage.example.com/profiles/${uuid()}.jpg`}));
+app.post('/api/uploads/catch-image', auth, upload.single('file'), (req: any, res) => {
+    if (!req.file) return res.status(400).json({error: {code: 'NO_FILE', message: 'No file uploaded.'}});
+    res.json({imageUrl: `/uploads/${req.file.filename}`});
+});
+app.post('/api/uploads/profile-image', auth, upload.single('file'), (req: any, res) => {
+    if (!req.file) return res.status(400).json({error: {code: 'NO_FILE', message: 'No file uploaded.'}});
+    res.json({imageUrl: `/uploads/${req.file.filename}`});
+});
 
 app.post('/api/users/:userId/follow', auth, (req, res) => {
     db.follows.add(`${req.userId}:${req.params.userId}`);

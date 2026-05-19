@@ -146,5 +146,16 @@
     async getUserBadges(userId) {
       return apiFetch('GET', '/api/users/' + userId + '/badges');
     },
+
+    async uploadCatchImage(file) {
+      const formData = new FormData();
+      formData.append('file', file);
+      const h = { 'x-user-id': userId };
+      if (accessToken) h['Authorization'] = 'Bearer ' + accessToken;
+      const r = await fetch('/api/uploads/catch-image', { method: 'POST', headers: h, body: formData });
+      const data = await r.json();
+      if (!r.ok) throw data;
+      return data;
+    },
   };
 })();
