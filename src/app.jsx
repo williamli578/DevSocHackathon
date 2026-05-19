@@ -10,7 +10,7 @@ const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
 }/*EDITMODE-END*/;
 
 function App() {
-  const [authed, setAuthed] = React.useState(true);
+  const [authed, setAuthed] = React.useState(false);
   const [route, setRoute] = React.useState("feed");
   const [openId, setOpenId] = React.useState(null);
   const [likes, setLikes] = React.useState({ c_4: true });
