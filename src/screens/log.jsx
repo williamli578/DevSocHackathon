@@ -20,6 +20,12 @@ function LogCatch({ onClose, onSubmit }) {
   const [visibility, setVisibility] = React.useState("public");
   const [shareFeed, setShareFeed] = React.useState(true);
   const logMapRef = React.useRef(null);
+  const markerRef = React.useRef(null);
+  const lMapRef = React.useRef(null);
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [suggestions, setSuggestions] = React.useState([]);
+  const [searching, setSearching] = React.useState(false);
+  const searchFocusedRef = React.useRef(false);
 
   const reverseGeocode = async (rlat, rlng) => {
     try {
@@ -56,12 +62,14 @@ function LogCatch({ onClose, onSubmit }) {
     });
 
     const marker = L.marker([initLat, initLng], { icon, draggable: true }).addTo(map);
+    markerRef.current = marker;
+    lMapRef.current = map;
 
     const updatePos = async (newLat, newLng) => {
       setLat(newLat);
       setLng(newLng);
       const name = await reverseGeocode(newLat, newLng);
-      if (name) setLocationName(name);
+      if (name) { setLocationName(name); setSearchQuery(name); }
     };
 
     marker.on('dragend', () => {
@@ -74,7 +82,7 @@ function LogCatch({ onClose, onSubmit }) {
     });
 
     setTimeout(() => map.invalidateSize(), 50);
-    return () => { map.remove(); };
+    return () => { map.remove(); markerRef.current = null; lMapRef.current = null; };
   }, []);
 
   const onFileSelect = async (i, file) => {
@@ -98,6 +106,48 @@ function LogCatch({ onClose, onSubmit }) {
       while (filled.length < 4) filled.push(null);
       return filled;
     });
+  };
+
+  // Debounced location search — only fires when the user is actively typing in the input
+  React.useEffect(() => {
+    if (!searchFocusedRef.current || searchQuery.length < 2) { setSuggestions([]); return; }
+    const t = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const r = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&limit=5&addressdetails=1`,
+          { headers: { 'Accept-Language': 'en' } }
+        );
+        const data = await r.json();
+        setSuggestions(Array.isArray(data) ? data : []);
+      } catch { setSuggestions([]); }
+      finally { setSearching(false); }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  const selectSuggestion = (s) => {
+    const newLat = parseFloat(s.lat);
+    const newLng = parseFloat(s.lon);
+    setLat(newLat);
+    setLng(newLng);
+    const a = s.address || {};
+    const name = [a.suburb || a.village || a.hamlet, a.city || a.town || a.county]
+      .filter(Boolean).slice(0, 2).join(', ') || s.display_name.split(',').slice(0, 2).join(',').trim();
+    setLocationName(name);
+    setSearchQuery(name);
+    setSuggestions([]);
+    if (markerRef.current) markerRef.current.setLatLng([newLat, newLng]);
+    if (lMapRef.current) lMapRef.current.setView([newLat, newLng], 13, { animate: true });
+  };
+
+  const togglePhoto = (i) => {
+    const copy = [...photos];
+    copy[i] = !copy[i];
+    // shift filled photos to the front
+    const filled = copy.filter(Boolean);
+    const empty = copy.filter((x) => !x);
+    setPhotos([...filled.map(() => true), ...empty.map(() => false)]);
   };
 
   const speciesOpt = D.SPECIES.find((s) => s.id === speciesId);
@@ -188,17 +238,63 @@ function LogCatch({ onClose, onSubmit }) {
           {/* Location */}
           <div className="log-section">
             <h3>Where</h3>
-            <div className="help">Click the map or drag the pin to set your location</div>
+            <div className="help">Search for a spot, or click the map to pin it exactly</div>
+
+            {/* Search with autocomplete */}
+            <div style={{ position: "relative", marginBottom: 10 }}>
+              <div style={{ position: "relative" }}>
+                <Ico.Search width="14" height="14" style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--c-muted)", pointerEvents: "none" }} />
+                <input
+                  className="input"
+                  style={{ paddingLeft: 32 }}
+                  placeholder="Search for a fishing spot…"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  onFocus={() => { searchFocusedRef.current = true; }}
+                  onBlur={() => { searchFocusedRef.current = false; setTimeout(() => setSuggestions([]), 150); }}
+                />
+                {searching && (
+                  <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--c-muted)" }}>
+                    searching…
+                  </span>
+                )}
+              </div>
+              {suggestions.length > 0 && (
+                <div style={{
+                  position: "absolute", zIndex: 1100, top: "100%", left: 0, right: 0, marginTop: 4,
+                  background: "var(--c-surface)", border: "1px solid var(--c-line-strong)",
+                  borderRadius: "var(--r-md)", boxShadow: "0 8px 24px rgba(0,0,0,0.15)", overflow: "hidden"
+                }}>
+                  {suggestions.map((s, i) => (
+                    <button
+                      key={i}
+                      onMouseDown={() => selectSuggestion(s)}
+                      style={{
+                        display: "block", width: "100%", textAlign: "left", padding: "10px 14px",
+                        background: "none", border: "none",
+                        borderBottom: i < suggestions.length - 1 ? "1px solid var(--c-line)" : "none",
+                        cursor: "pointer"
+                      }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 500, color: "var(--c-ink)" }}>
+                        {s.display_name.split(',')[0]}
+                      </div>
+                      <div style={{ fontSize: 11, color: "var(--c-muted)", fontFamily: "var(--f-mono)", marginTop: 2 }}>
+                        {s.display_name.split(',').slice(1, 3).join(',').trim()}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Map */}
             <div
               ref={logMapRef}
-              style={{ height: 240, borderRadius: "var(--r-md)", border: "1px solid var(--c-line)", overflow: "hidden", marginBottom: 8 }}
+              style={{ height: 240, borderRadius: "var(--r-md)", border: "1px solid var(--c-line)", overflow: "hidden", marginBottom: 6 }}
             />
-            <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--c-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+            <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--c-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
               {lat.toFixed(5)}, {lng.toFixed(5)}
-            </div>
-            <div className="field">
-              <label>Location name</label>
-              <input className="input" placeholder="e.g. Cronulla, Bate Bay" value={locationName} onChange={(e) => setLocationName(e.target.value)} />
             </div>
           </div>
 
