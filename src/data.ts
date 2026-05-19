@@ -89,7 +89,10 @@ const db = {
     species: [...initialSpecies],
     likes: new Set<string>(),
     follows: new Set<string>(),
-    refreshTokens: new Set<string>()
+    refreshTokens: new Set<string>(),
+    passwordHashes: new Map<string, string>(),
+    emailToUserId: new Map<string, string>(),
+    refreshTokenToUserId: new Map<string, string>(),
 };
 
 export function getData() {

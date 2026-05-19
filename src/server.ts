@@ -1,10 +1,19 @@
-import express, {NextFunction, Request, Response} from 'express';
+import express, {NextFunction, Response} from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import {v4 as uuid} from 'uuid';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
 import {getData} from './data';
 
-type AuthedRequest = Request & { userId?: string };
+const JWT_SECRET = process.env.JWT_SECRET || 'fishstagram_dev_secret_change_in_prod';
+const JWT_EXPIRES_IN = '7d';
+
+declare global {
+    namespace Express {
+        interface Request { userId?: string; }
+    }
+}
 
 const upload = multer({storage: multer.memoryStorage()});
 
@@ -15,8 +24,22 @@ app.use(cors());
 app.use(express.json());
 
 const now = () => new Date().toISOString();
-const token = (prefix: string) => `${prefix}_${uuid()}`;
-const auth = (req: AuthedRequest, _res: Response, next: NextFunction) => {
+const auth = (req: express.Request, res: Response, next: NextFunction) => {
+    const authHeader = req.header('Authorization');
+    if (authHeader?.startsWith('Bearer ')) {
+        const tokenStr = authHeader.slice(7);
+        try {
+            const payload = jwt.verify(tokenStr, JWT_SECRET) as { userId: string };
+            req.userId = payload.userId;
+            if (!db.users.has(req.userId)) {
+                return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User not found.' } });
+            }
+            return next();
+        } catch {
+            return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token.' } });
+        }
+    }
+    // Fallback: x-user-id header for local dev without a token
     req.userId = req.header('x-user-id') || 'user_demo';
     if (!db.users.has(req.userId)) db.users.set(req.userId, {
         id: req.userId,
@@ -35,39 +58,67 @@ function paginate(items, limit = 20, cursor = null) {
     return {items: slice, nextCursor};
 }
 
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
+    const {username, email, password} = req.body;
+    if (!username || !email || !password) {
+        return res.status(400).json({error: {code: 'MISSING_FIELDS', message: 'Username, email, and password are required.'}});
+    }
+    if (db.emailToUserId.has(email)) {
+        return res.status(409).json({error: {code: 'EMAIL_IN_USE', message: 'An account with that email already exists.'}});
+    }
     const id = `user_${uuid().slice(0, 8)}`;
-    const user = {
-        id,
-        username: req.body.username,
-        email: req.body.email,
-        profileImageUrl: null,
-        bio: '',
-        badges: [],
-        createdAt: now(),
-        updatedAt: now()
-    };
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = {id, username, email, profileImageUrl: null, bio: '', badges: [], createdAt: now(), updatedAt: now()};
     db.users.set(id, user);
-    res.status(201).json({
-        user: {
-            id: user.id,
-            username: user.username,
-            email: user.email
-        },
-        accessToken: token('jwt_access_token'),
-        refreshToken: token('jwt_refresh_token')
-    });
+    db.passwordHashes.set(id, passwordHash);
+    db.emailToUserId.set(email, id);
+    const accessToken = jwt.sign({userId: id}, JWT_SECRET, {expiresIn: JWT_EXPIRES_IN});
+    const refreshToken = `refresh_${uuid()}`;
+    db.refreshTokens.add(refreshToken);
+    db.refreshTokenToUserId.set(refreshToken, id);
+    res.status(201).json({user: {id, username, email}, accessToken, refreshToken});
 });
-app.post('/api/auth/login', (req, res) => res.json({
-    user: {
-        id: 'user_demo',
-        username: 'fishmaster'
-    },
-    accessToken: token('jwt_access_token'),
-    refreshToken: token('jwt_refresh_token')
-}));
-app.post('/api/auth/logout', (_req, res) => res.json({message: 'Logged out successfully'}));
-app.post('/api/auth/refresh-token', (_req, res) => res.json({accessToken: token('new_jwt_access_token')}));
+
+app.post('/api/auth/login', async (req, res) => {
+    const {email, password} = req.body;
+    if (!email || !password) {
+        return res.status(400).json({error: {code: 'MISSING_FIELDS', message: 'Email and password are required.'}});
+    }
+    const userId = db.emailToUserId.get(email);
+    if (!userId) {
+        return res.status(401).json({error: {code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.'}});
+    }
+    const hash = db.passwordHashes.get(userId);
+    const valid = await bcrypt.compare(password, hash!);
+    if (!valid) {
+        return res.status(401).json({error: {code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.'}});
+    }
+    const user = db.users.get(userId)!;
+    const accessToken = jwt.sign({userId}, JWT_SECRET, {expiresIn: JWT_EXPIRES_IN});
+    const refreshToken = `refresh_${uuid()}`;
+    db.refreshTokens.add(refreshToken);
+    db.refreshTokenToUserId.set(refreshToken, userId);
+    res.json({user: {id: user.id, username: user.username, email: user.email}, accessToken, refreshToken});
+});
+
+app.post('/api/auth/logout', (req, res) => {
+    const {refreshToken} = req.body;
+    if (refreshToken) {
+        db.refreshTokens.delete(refreshToken);
+        db.refreshTokenToUserId.delete(refreshToken);
+    }
+    res.json({message: 'Logged out successfully'});
+});
+
+app.post('/api/auth/refresh-token', (req, res) => {
+    const {refreshToken} = req.body;
+    if (!refreshToken || !db.refreshTokens.has(refreshToken)) {
+        return res.status(401).json({error: {code: 'INVALID_REFRESH_TOKEN', message: 'Invalid or expired refresh token.'}});
+    }
+    const userId = db.refreshTokenToUserId.get(refreshToken)!;
+    const accessToken = jwt.sign({userId}, JWT_SECRET, {expiresIn: JWT_EXPIRES_IN});
+    res.json({accessToken});
+});
 app.get('/api/auth/me', auth, (req, res) => res.json(db.users.get(req.userId)));
 
 app.get('/api/users/:userId', (req, res) => {
