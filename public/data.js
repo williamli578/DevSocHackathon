@@ -20,7 +20,7 @@ window.DATA = (() => {
     { id: "u_priya", name: "Priya Vellam", handle: "priya_v", initial: "P", bio: "Saltwater fly. Permit obsessed. Boat owner. Will share GPS for a beer.", region: "Hervey Bay, QLD", catches: 198, species: 22, points: 6240, followers: 3490, following: 412, badges: 21 },
     { id: "u_diego", name: "Diego Marín", handle: "diego.casts", initial: "D", bio: "Snapper specialist. Tides matter. Moon phases matter more.", region: "Port Phillip Bay", catches: 312, species: 14, points: 7820, followers: 5240, following: 220, badges: 26 },
     { id: "u_sage", name: "Sage Whitlock", handle: "sage_w", initial: "S", bio: "Land based. Cheap rod, expensive coffee.", region: "Wollongong", catches: 64, species: 9, points: 1980, followers: 412, following: 188, badges: 6 },
-    { id: "u_you", name: "You", handle: "you", initial: "Y", bio: "New to all this. Mostly fishing for vibes.", region: "Sydney", catches: 12, species: 4, points: 380, followers: 28, following: 42, badges: 3 },
+    { id: "u_you", name: "You", handle: "you", initial: "Y", bio: "NUmber 1 hackaton", region: "UNSW", catches: 0, species: 0, points: 0, followers: 0, following: 0, badges: 0 },
   ];
 
   const CATCHES = [
