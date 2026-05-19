@@ -194,8 +194,10 @@ function verifyPassword(password: string, storedHash: string) {
     });
     app.get('/api/auth/me', auth, (req, res) => {
         const u = db.users.get(req.userId);
-        const catchCount = [...db.catches.values()].filter(c => c.userId === req.userId).length;
-        res.json({ ...u, catchCount });
+        const userCatches = [...db.catches.values()].filter(c => c.userId === req.userId);
+        const catchCount = userCatches.length;
+        const speciesCount = new Set(userCatches.map(c => c.speciesId).filter(Boolean)).size;
+        res.json({ ...u, catchCount, speciesCount });
     });
 
     app.get('/api/users/:userId', (req, res) => {

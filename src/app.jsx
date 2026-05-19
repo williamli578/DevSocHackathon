@@ -28,14 +28,42 @@ function App() {
     html.setAttribute("data-density", t.density);
   }, [t.theme, t.palette, t.fonts, t.density]);
 
+  const [viewer, setViewer] = React.useState(window.DATA.userById("u_you"));
+
   const onLike = (id) => setLikes({ ...likes, [id]: !likes[id] });
-  const viewer = window.DATA.userById("u_you");
   const unread = window.DATA.NOTIFICATIONS.filter(n => n.unread).length;
+
+  const handleAuthComplete = React.useCallback(async () => {
+    setAuthed(true);
+    if (window.API) {
+      try {
+        const me = await window.API.getMe();
+        if (me) {
+          const handle = me.handle || me.username || 'angler';
+          setViewer({
+            id: me.id,
+            name: me.name || me.username || 'Angler',
+            handle,
+            initial: me.initial || handle[0].toUpperCase(),
+            bio: me.bio || '',
+            region: me.region || '',
+            catches: me.catchCount ?? 0,
+            species: me.speciesCount ?? 0,
+            badges: me.badgeCount ?? 0,
+            followers: me.followerCount ?? 0,
+            points: me.points ?? 0,
+          });
+        }
+      } catch (e) {
+        // fallback to static data
+      }
+    }
+  }, []);
 
   if (!authed) {
     return (
       <React.Fragment>
-        <Auth onComplete={() => setAuthed(true)} />
+        <Auth onComplete={handleAuthComplete} />
         <TweaksControls t={t} setTweak={setTweak} />
       </React.Fragment>
     );
