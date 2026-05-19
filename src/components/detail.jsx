@@ -26,11 +26,16 @@ function Detail({ catchId, onClose, liked, onLike }) {
     }
   }, [c && c.id, c && c.postId]);
 
-  // Escape key to close
+  // Escape key to close + lock body scroll
   React.useEffect(() => {
     const onKey = e => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
   }, [onClose]);
 
   if (!c) return (
