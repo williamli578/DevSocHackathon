@@ -2,15 +2,37 @@ import express, {NextFunction, Request, Response} from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import path from 'path';
+import crypto from 'crypto';
 import {v4 as uuid} from 'uuid';
 import {getData} from './data';
 
-type AuthedRequest = Request & { userId?: string };
+declare global {
+    namespace Express {
+        interface Request {
+            userId?: string;
+        }
+    }
+}
+
+type AccessTokenPayload = {
+    userId: string;
+    exp: number;
+};
+
+type AuthData = ReturnType<typeof getData> & {
+    passwordHashes: Map<string, string>;
+    emailToUserId: Map<string, string>;
+    refreshTokenToUserId: Map<string, string>;
+};
 
 const upload = multer({storage: multer.memoryStorage()});
 
 // Replace local db with shared data module
-const db = getData();
+const db = getData() as AuthData;
+db.passwordHashes ||= new Map<string, string>();
+db.emailToUserId ||= new Map<string, string>();
+db.refreshTokenToUserId ||= new Map<string, string>();
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -23,84 +45,169 @@ app.use(express.static(path.join(root, 'src', 'components')));
 app.get('/', (_req, res) => res.sendFile(path.join(root, 'public', 'Fishstagram.html')));
 
 const now = () => new Date().toLocaleString('sv', { timeZone: 'Australia/Sydney' }).replace(' ', 'T');
-const token = (prefix: string) => `${prefix}_${uuid()}`;
-const auth = (req: AuthedRequest, _res: Response, next: NextFunction) => {
-    req.userId = req.header('x-user-id') || 'user_demo';
-    if (!db.users.has(req.userId)) db.users.set(req.userId, {
-        id: req.userId,
-        username: 'fishmaster',
-        email: 'user@example.com',
-        badges: [],
-        createdAt: now()
-    });
-    next();
-};
+const JWT_SECRET = process.env.JWT_SECRET || 'fishstagram-dev-secret';
+const ACCESS_TOKEN_TTL_MS = 60 * 60 * 1000;
 
-function paginate(items, limit = 20, cursor = null) {
+function paginate<T>(items: T[], limit = 20, cursor: unknown = null) {
     const start = cursor ? Number(cursor) : 0;
     const slice = items.slice(start, start + limit);
     const nextCursor = start + limit < items.length ? String(start + limit) : null;
     return {items: slice, nextCursor};
 }
 
-app.post('/api/auth/register', (req, res) => {
-    const id = `user_${uuid().slice(0, 8)}`;
-    const user = {
-        id,
-        username: req.body.username,
-        email: req.body.email,
-        profileImageUrl: null,
-        bio: '',
-        badges: [],
-        createdAt: now(),
-        updatedAt: now()
-    };
-    db.users.set(id, user);
-    res.status(201).json({
-        user: {
-            id: user.id,
-            username: user.username,
-            email: user.email
-        },
-        accessToken: token('jwt_access_token'),
-        refreshToken: token('jwt_refresh_token')
-    });
-});
-app.post('/api/auth/login', (req, res) => res.json({
-    user: {
-        id: 'user_demo',
-        username: 'fishmaster'
-    },
-    accessToken: token('jwt_access_token'),
-    refreshToken: token('jwt_refresh_token')
-}));
-app.post('/api/auth/logout', (_req, res) => res.json({message: 'Logged out successfully'}));
-app.post('/api/auth/refresh-token', (_req, res) => res.json({accessToken: token('new_jwt_access_token')}));
-app.get('/api/auth/me', auth, (req, res) => res.json(db.users.get(req.userId)));
+const base64Url = (value: string | Buffer) => Buffer.from(value).toString('base64url');
+const signValue = (value: string) => crypto.createHmac('sha256', JWT_SECRET).update(value).digest('base64url');
 
-app.get('/api/users/:userId', (req, res) => {
-    const u = db.users.get(req.params.userId);
-    if (!u) return res.status(404).json({
-        error: {
-            code: 'USER_NOT_FOUND',
-            message: 'User not found.'
+function signAccessToken(userId: string) {
+    const payload: AccessTokenPayload = {
+        userId,
+        exp: Date.now() + ACCESS_TOKEN_TTL_MS
+    };
+    const encodedPayload = base64Url(JSON.stringify(payload));
+    return `${encodedPayload}.${signValue(encodedPayload)}`;
+}
+
+function verifyAccessToken(tokenStr: string) {
+    const [encodedPayload, signature] = tokenStr.split('.');
+    if (!encodedPayload || !signature) throw new Error('Malformed token');
+
+    const expectedSignature = signValue(encodedPayload);
+    const signatureBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expectedSignature);
+    if (signatureBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) {
+        throw new Error('Invalid token signature');
+    }
+
+    const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8')) as AccessTokenPayload;
+    if (!payload.userId || Date.now() > payload.exp) throw new Error('Expired token');
+    return payload;
+}
+
+function hashPassword(password: string, salt = crypto.randomBytes(16).toString('hex')) {
+    const hash = crypto.pbkdf2Sync(password, salt, 100000, 32, 'sha256').toString('hex');
+    return `${salt}:${hash}`;
+}
+
+function verifyPassword(password: string, storedHash: string) {
+    const [salt, hash] = storedHash.split(':');
+    if (!salt || !hash) return false;
+    const candidate = hashPassword(password, salt).split(':')[1];
+    return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(candidate));
+}
+
+    const auth = (req: Request, res: Response, next: NextFunction) => {
+        const authHeader = req.header('Authorization');
+        if (authHeader?.startsWith('Bearer ')) {
+            const tokenStr = authHeader.slice(7);
+            try {
+                const payload = verifyAccessToken(tokenStr);
+                req.userId = payload.userId;
+                if (!db.users.has(req.userId)) {
+                    return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'User not found.' } });
+                }
+                return next();
+            } catch {
+                return res.status(401).json({ error: { code: 'UNAUTHORIZED', message: 'Invalid or expired token.' } });
+            }
         }
+        // Fallback: x-user-id header for local dev without a token
+        req.userId = req.header('x-user-id') || 'user_demo';
+        if (!db.users.has(req.userId)) db.users.set(req.userId, {
+            id: req.userId,
+            username: 'fishmaster',
+            email: 'user@example.com',
+            badges: [],
+            createdAt: now()
+        });
+        next();
+    };
+
+    app.post('/api/auth/register', async (req, res) => {
+        const {username, email, password} = req.body || {};
+        if (!username || !email || !password) {
+            return res.status(400).json({error: {code: 'MISSING_FIELDS', message: 'Username, email, and password are required.'}});
+        }
+        if (db.emailToUserId.has(email)) {
+            return res.status(409).json({error: {code: 'EMAIL_IN_USE', message: 'An account with that email already exists.'}});
+        }
+        const id = `user_${uuid().slice(0, 8)}`;
+        const passwordHash = hashPassword(password);
+        const user = {id, username, email, profileImageUrl: null, bio: '', badges: [], createdAt: now(), updatedAt: now()};
+        db.users.set(id, user);
+        db.passwordHashes.set(id, passwordHash);
+        db.emailToUserId.set(email, id);
+        const accessToken = signAccessToken(id);
+        const refreshToken = `refresh_${uuid()}`;
+        db.refreshTokens.add(refreshToken);
+        db.refreshTokenToUserId.set(refreshToken, id);
+        res.status(201).json({user: {id, username, email}, accessToken, refreshToken});
     });
-    res.json({
-        id: u.id,
-        username: u.username,
-        profileImageUrl: u.profileImageUrl,
-        bio: u.bio,
-        totalCatches: [...db.catches.values()].filter(c => c.userId === u.id).length,
-        totalBadges: u.badges?.length || 0,
-        createdAt: u.createdAt
+
+    app.post('/api/auth/login', async (req, res) => {
+        const {email, password} = req.body || {};
+        if (!email || !password) {
+            return res.status(400).json({error: {code: 'MISSING_FIELDS', message: 'Email and password are required.'}});
+        }
+        const userId = db.emailToUserId.get(email);
+        if (!userId) {
+            return res.status(401).json({error: {code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.'}});
+        }
+        const hash = db.passwordHashes.get(userId);
+        const valid = hash ? verifyPassword(password, hash) : false;
+        if (!valid) {
+            return res.status(401).json({error: {code: 'INVALID_CREDENTIALS', message: 'Invalid email or password.'}});
+        }
+        const user = db.users.get(userId)!;
+        const accessToken = signAccessToken(userId);
+        const refreshToken = `refresh_${uuid()}`;
+        db.refreshTokens.add(refreshToken);
+        db.refreshTokenToUserId.set(refreshToken, userId);
+        res.json({user: {id: user.id, username: user.username, email: user.email}, accessToken, refreshToken});
     });
-});
-app.patch('/api/me/profile', auth, (req, res) => {
-    const u = db.users.get(req.userId);
-    Object.assign(u, req.body, {updatedAt: now()});
-    res.json(u);
-});
+
+    app.post('/api/auth/logout', (req, res) => {
+        const {refreshToken} = req.body || {};
+        if (refreshToken) {
+            db.refreshTokens.delete(refreshToken);
+            db.refreshTokenToUserId.delete(refreshToken);
+        }
+        res.json({message: 'Logged out successfully'});
+    });
+
+    app.post('/api/auth/refresh-token', (req, res) => {
+        const {refreshToken} = req.body || {};
+        if (!refreshToken || !db.refreshTokens.has(refreshToken)) {
+            return res.status(401).json({error: {code: 'INVALID_REFRESH_TOKEN', message: 'Invalid or expired refresh token.'}});
+        }
+        const userId = db.refreshTokenToUserId.get(refreshToken)!;
+        const accessToken = signAccessToken(userId);
+        res.json({accessToken});
+    });
+    app.get('/api/auth/me', auth, (req, res) => res.json(db.users.get(req.userId)));
+
+    app.get('/api/users/:userId', (req, res) => {
+        const u = db.users.get(req.params.userId);
+        if (!u) return res.status(404).json({
+            error: {
+                code: 'USER_NOT_FOUND',
+                message: 'User not found.'
+            }
+        });
+        res.json({
+            id: u.id,
+            username: u.username,
+            profileImageUrl: u.profileImageUrl,
+            bio: u.bio,
+            totalCatches: [...db.catches.values()].filter(c => c.userId === u.id).length,
+            totalBadges: u.badges?.length || 0,
+            createdAt: u.createdAt
+        });
+    });
+    app.patch('/api/me/profile', auth, (req, res) => {
+        const u = db.users.get(req.userId);
+        Object.assign(u, req.body, {updatedAt: now()});
+        res.json(u);
+    });
 app.get('/api/users/:userId/catches', auth, (req, res) => {
     const {userId} = req.params;
     const v = [...db.catches.values()].filter(c => c.userId === userId && (c.visibility === 'public' || c.userId === req.userId));
