@@ -4,6 +4,8 @@ function Leaderboard() {
   const D = window.DATA;
   const [type, setType] = React.useState("points");
   const [period, setPeriod] = React.useState("weekly");
+  const [apiRows, setApiRows] = React.useState([]);
+
   const types = [
     { id: "points", label: "Points" },
     { id: "catches", label: "Catches" },
@@ -16,12 +18,38 @@ function Leaderboard() {
     { id: "yearly", label: "This year" },
     { id: "all_time", label: "All time" },
   ];
-  const metricFor = (u) =>
-    type === "points" ? u.points :
-    type === "catches" ? u.catches :
-    type === "species" ? u.species :
-    u.badges;
-  const sorted = [...D.USERS].sort((a, b) => metricFor(b) - metricFor(a));
+
+  React.useEffect(() => {
+    if (!window.API) return;
+    window.API.getLeaderboard().then(data => {
+      if (data && data.items) setApiRows(data.items);
+    }).catch(() => {});
+  }, []);
+
+  // For "catches" metric, prefer API data; for others use mock data
+  let sorted;
+  if (type === "catches" && apiRows.length > 0) {
+    const apiIds = new Set(apiRows.map(r => r.userId));
+    const mockExtras = D.USERS.filter(u => !apiIds.has(u.id)).map(u => ({
+      rank: 0, userId: u.id, username: u.handle, score: u.catches, metric: 'total_catches',
+      _mock: u,
+    }));
+    sorted = [...apiRows, ...mockExtras].sort((a, b) => b.score - a.score).map((r, i) => ({
+      ...r, rank: i + 1,
+    }));
+  } else {
+    const metricFor = u =>
+      type === "points" ? u.points :
+      type === "catches" ? u.catches :
+      type === "species" ? u.species :
+      u.badges;
+    sorted = [...D.USERS].sort((a, b) => metricFor(b) - metricFor(a)).map((u, i) => ({
+      rank: i + 1, userId: u.id, username: u.handle, score: metricFor(u), _mock: u,
+    }));
+  }
+
+  const youIdx = sorted.findIndex(r => r.userId === "u_you" || r.userId === (window.API && window.API.getUserId()));
+
   return (
     <React.Fragment>
       <div className="page-header">
@@ -30,7 +58,7 @@ function Leaderboard() {
           <div className="page-sub">{periods.find(p => p.id === period).label} · {types.find(t => t.id === type).label.toLowerCase()}</div>
         </div>
         <div className="tab-row">
-          {periods.map((p) => (
+          {periods.map(p => (
             <button key={p.id} className={"tab " + (period === p.id ? "active" : "")} onClick={() => setPeriod(p.id)}>
               {p.label}
             </button>
@@ -40,34 +68,42 @@ function Leaderboard() {
       <div className="page-body">
         <div>
           <div className="tab-row" style={{ marginBottom: "var(--gap-4)" }}>
-            {types.map((t) => (
+            {types.map(t => (
               <button key={t.id} className={"tab " + (type === t.id ? "active" : "")} onClick={() => setType(t.id)}>
                 {t.label}
               </button>
             ))}
           </div>
           <div className="leaderboard-table">
-            {sorted.map((u, i) => (
-              <div key={u.id} className={"leaderboard-row " + (i < 3 ? "top " : "") + (u.id === "u_you" ? "you" : "")}>
-                <div className="rank">{String(i + 1).padStart(2, "0")}</div>
-                <div className="who">
-                  <Avatar user={u} />
-                  <div>
-                    <div className="name">{u.name}{u.id === "u_you" ? " (you)" : ""}</div>
-                    <div className="meta">@{u.handle} · {u.region}</div>
+            {sorted.map((r, i) => {
+              const mock = r._mock || D.userById(r.userId);
+              const name = mock ? mock.name : (r.username || r.userId);
+              const handle = mock ? mock.handle : (r.username || r.userId);
+              const region = mock ? mock.region : '';
+              const isYou = r.userId === "u_you" || r.userId === (window.API && window.API.getUserId());
+              const avatarUser = mock || { id: r.userId, name, handle, initial: (r.username || '?')[0]?.toUpperCase() };
+              return (
+                <div key={r.userId} className={"leaderboard-row " + (i < 3 ? "top " : "") + (isYou ? "you" : "")}>
+                  <div className="rank">{String(r.rank).padStart(2, "0")}</div>
+                  <div className="who">
+                    <Avatar user={avatarUser} />
+                    <div>
+                      <div className="name">{name}{isYou ? " (you)" : ""}</div>
+                      <div className="meta">@{handle}{region ? " · " + region : ""}</div>
+                    </div>
                   </div>
+                  <div className="metric">{types.find(t => t.id === type).label}</div>
+                  <div className="score">{formatNum(r.score || 0)}</div>
                 </div>
-                <div className="metric">{types.find(t => t.id === type).label}</div>
-                <div className="score">{formatNum(metricFor(u))}</div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
         <div className="right-rail">
           <div className="rail-card dark">
             <h4>Your standing</h4>
             <div style={{ fontFamily: "var(--f-display)", fontStyle: "italic", fontSize: 64, lineHeight: 0.95 }}>
-              #{sorted.findIndex(u => u.id === "u_you") + 1}
+              #{youIdx >= 0 ? youIdx + 1 : sorted.length}
             </div>
             <div style={{ fontSize: 13, opacity: 0.85, marginTop: 6 }}>
               of {sorted.length} anglers
@@ -118,7 +154,7 @@ function Badges() {
           <div className="page-sub">{D.BADGES.filter(b => b.earned).length} of {D.BADGES.length} earned · Auto-unlocks after each catch</div>
         </div>
         <div className="tab-row">
-          {["all", "earned", "locked"].map((t) => (
+          {["all", "earned", "locked"].map(t => (
             <button key={t} className={"tab " + (tab === t ? "active" : "")} onClick={() => setTab(t)}>
               {t[0].toUpperCase() + t.slice(1)}
             </button>
@@ -127,7 +163,7 @@ function Badges() {
       </div>
       <div className="page-body single">
         <div className="badge-grid">
-          {list.map((b) => <BadgeCard key={b.id} badge={b} />)}
+          {list.map(b => <BadgeCard key={b.id} badge={b} />)}
         </div>
       </div>
     </React.Fragment>
@@ -137,24 +173,43 @@ function Badges() {
 function Notifications({ onOpen, onSetRoute }) {
   const D = window.DATA;
   const [items, setItems] = React.useState(D.NOTIFICATIONS);
-  const markAll = () => setItems(items.map(n => ({ ...n, unread: false })));
+
+  React.useEffect(() => {
+    if (!window.API) return;
+    window.API.getNotifications().then(data => {
+      // Only replace mock notifications if API returns real ones
+      if (data && data.items && data.items.length > 0) setItems(data.items);
+    }).catch(() => {});
+  }, []);
+
+  const markAll = () => {
+    setItems(items.map(n => ({ ...n, unread: false, isRead: true })));
+    if (window.API) window.API.markAllNotificationsRead().catch(() => {});
+  };
+
   const onClick = (n) => {
-    setItems(items.map(x => x.id === n.id ? { ...x, unread: false } : x));
+    setItems(items.map(x => x.id === n.id ? { ...x, unread: false, isRead: true } : x));
     if (n.catchId) onOpen(n.catchId);
     else if (n.type === "follow") onSetRoute("profile");
     else if (n.type === "badge") onSetRoute("badges");
     else if (n.type === "leaderboard") onSetRoute("leaderboard");
   };
+
+  const isUnread = n => n.unread || n.isRead === false;
   const groups = {
-    today: items.filter(n => n.time.endsWith("m") || n.time.endsWith("h")),
-    earlier: items.filter(n => n.time.endsWith("d")),
+    today: items.filter(n => {
+      if (n.time) return n.time.endsWith("m") || n.time.endsWith("h");
+      return true;
+    }),
+    earlier: items.filter(n => n.time && n.time.endsWith("d")),
   };
+
   return (
     <React.Fragment>
       <div className="page-header">
         <div>
           <h1 className="page-title"><em>Notifications</em></h1>
-          <div className="page-sub">{items.filter(n => n.unread).length} unread</div>
+          <div className="page-sub">{items.filter(isUnread).length} unread</div>
         </div>
         <button className="btn btn-ghost" onClick={markAll}>Mark all read</button>
       </div>
@@ -166,19 +221,20 @@ function Notifications({ onOpen, onSetRoute }) {
                 {k === "today" ? "Today" : "Earlier"}
               </h4>
               <div className="notif-list">
-                {list.map((n) => {
+                {list.map(n => {
                   const u = n.userId ? D.userById(n.userId) : null;
+                  const unread = isUnread(n);
                   return (
-                    <div key={n.id} className={"notif-row " + (n.unread ? "unread" : "")} onClick={() => onClick(n)}>
-                      {n.unread ? <span className="dot" /> : <span style={{ width: 8 }} />}
+                    <div key={n.id} className={"notif-row " + (unread ? "unread" : "")} onClick={() => onClick(n)}>
+                      {unread ? <span className="dot" /> : <span style={{ width: 8 }} />}
                       {u ? <Avatar user={u} /> :
                         <div className="avatar" style={{ background: n.type === "badge" ? "var(--c-accent)" : "var(--c-brand-2)" }}>
                           {n.type === "badge" ? "★" : n.type === "leaderboard" ? "#" : "F"}
                         </div>
                       }
                       <div className="body">
-                        {u ? <React.Fragment><b>{u.name}</b> {n.text}</React.Fragment> : n.text}
-                        <div className="meta" style={{ marginTop: 4 }}>{n.time} ago</div>
+                        {u ? <React.Fragment><b>{u.name}</b> {n.text}</React.Fragment> : (n.text || n.message || '')}
+                        <div className="meta" style={{ marginTop: 4 }}>{n.time ? n.time + ' ago' : timeAgo(n.createdAt)}</div>
                       </div>
                       {n.catchId ? <div className="thumb" /> : null}
                     </div>
@@ -197,11 +253,37 @@ function Search({ onOpen, onSetRoute }) {
   const D = window.DATA;
   const [q, setQ] = React.useState("");
   const [type, setType] = React.useState("all");
+  const [apiResults, setApiResults] = React.useState(null);
   const types = ["all", "users", "species", "catches"];
   const ql = q.toLowerCase().trim();
-  const users = ql ? D.USERS.filter(u => u.name.toLowerCase().includes(ql) || u.handle.toLowerCase().includes(ql)) : D.USERS.slice(0, 5);
-  const species = ql ? D.SPECIES.filter(s => s.name.toLowerCase().includes(ql)) : D.SPECIES.slice(0, 6);
-  const catches = ql ? D.CATCHES.filter(c => (D.speciesById(c.speciesId).name + " " + c.location.name).toLowerCase().includes(ql)) : D.CATCHES.slice(0, 4);
+
+  // Debounced API search
+  React.useEffect(() => {
+    if (!ql || !window.API) { setApiResults(null); return; }
+    const timer = setTimeout(() => {
+      window.API.search(ql).then(data => setApiResults(data)).catch(() => setApiResults(null));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [ql]);
+
+  // Merge API results with mock data
+  const apiUserIds = new Set((apiResults?.users || []).map(u => u.id));
+  const apiCatchIds = new Set((apiResults?.catches || []).map(c => c.id));
+
+  const users = apiResults
+    ? [...(apiResults.users || []).map(u => ({ ...u, name: u.username, handle: u.username, initial: (u.username || '?')[0].toUpperCase(), followers: 0, catches: 0 })),
+       ...D.USERS.filter(u => !apiUserIds.has(u.id) && (u.name.toLowerCase().includes(ql) || u.handle.toLowerCase().includes(ql)))]
+    : (ql ? D.USERS.filter(u => u.name.toLowerCase().includes(ql) || u.handle.toLowerCase().includes(ql)) : D.USERS.slice(0, 5));
+
+  const species = ql
+    ? D.SPECIES.filter(s => s.name.toLowerCase().includes(ql))
+    : D.SPECIES.slice(0, 6);
+
+  const catches = apiResults
+    ? [...(apiResults.catches || []).filter(c => c.location),
+       ...D.CATCHES.filter(c => !apiCatchIds.has(c.id) && (D.speciesById(c.speciesId)?.name + " " + c.location?.name || '').toLowerCase().includes(ql))]
+    : (ql ? D.CATCHES.filter(c => (D.speciesById(c.speciesId)?.name + " " + c.location?.name || '').toLowerCase().includes(ql)) : D.CATCHES.slice(0, 4));
+
   return (
     <React.Fragment>
       <div className="page-header">
@@ -210,7 +292,7 @@ function Search({ onOpen, onSetRoute }) {
           <div className="page-sub">Users, species, places, catches</div>
         </div>
         <div className="tab-row">
-          {types.map((t) => (
+          {types.map(t => (
             <button key={t} className={"tab " + (type === t ? "active" : "")} onClick={() => setType(t)}>
               {t[0].toUpperCase() + t.slice(1)}
             </button>
@@ -221,7 +303,7 @@ function Search({ onOpen, onSetRoute }) {
         <div style={{ maxWidth: 720 }}>
           <div className="search-box">
             <Ico.Search width="18" height="18" style={{ color: "var(--c-muted)" }} />
-            <input placeholder="Try 'flathead', 'cronulla', or '@diego'" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+            <input placeholder="Try 'flathead', 'cronulla', or '@diego'" value={q} onChange={e => setQ(e.target.value)} autoFocus />
           </div>
           <div className="search-results">
             {(type === "all" || type === "users") && users.length > 0 && (
@@ -229,12 +311,12 @@ function Search({ onOpen, onSetRoute }) {
                 <div className="rail-card" style={{ padding: 0, overflow: "hidden" }}>
                   <h4 style={{ padding: "12px 16px 0", margin: 0 }}>Anglers</h4>
                   <div style={{ padding: "8px 16px 12px" }}>
-                    {users.slice(0, 5).map((u) => (
+                    {users.slice(0, 5).map(u => (
                       <div className="follow-row" key={u.id} onClick={() => onSetRoute("profile")} style={{ cursor: "pointer" }}>
                         <Avatar user={u} />
                         <div className="who">
                           <div className="name">{u.name}</div>
-                          <div className="meta">@{u.handle} · {formatNum(u.followers)} followers · {u.catches} catches</div>
+                          <div className="meta">@{u.handle} · {formatNum(u.followers || 0)} followers · {u.catches || 0} catches</div>
                         </div>
                         <button className="btn-pill">View</button>
                       </div>
@@ -248,7 +330,7 @@ function Search({ onOpen, onSetRoute }) {
                 <div className="rail-card">
                   <h4>Species</h4>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    {species.slice(0, 6).map((s) => (
+                    {species.slice(0, 6).map(s => (
                       <div key={s.id} style={{ padding: 10, border: "1px solid var(--c-line)", borderRadius: "var(--r-md)", cursor: "pointer" }}>
                         <div style={{ fontFamily: "var(--f-display)", fontStyle: "italic", fontSize: 18, lineHeight: 1 }}>{s.name}</div>
                         <div style={{ fontFamily: "var(--f-display)", fontStyle: "italic", fontSize: 11, color: "var(--c-muted)", marginTop: 2 }}>{s.latin}</div>
@@ -266,15 +348,15 @@ function Search({ onOpen, onSetRoute }) {
                 <div className="rail-card">
                   <h4>Catches</h4>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    {catches.slice(0, 5).map((c) => {
-                      const u = D.userById(c.userId);
-                      const s = D.speciesById(c.speciesId);
+                    {catches.slice(0, 5).map(c => {
+                      const u = resolveUser(c.userId);
+                      const s = resolveSpecies(c);
                       return (
                         <div key={c.id} className="map-list-item" onClick={() => onOpen(c.id)}>
                           <div className="thumb" />
                           <div className="info">
                             <div className="ttl">{s.name} · {c.lengthCm}cm</div>
-                            <div className="meta">@{u.handle} · {c.location.name}</div>
+                            <div className="meta">@{u.handle} · {c.location?.name}</div>
                           </div>
                           {c.trophy ? <span className="pill accent" style={{ fontSize: 9 }}>★</span> : null}
                         </div>
@@ -293,6 +375,30 @@ function Search({ onOpen, onSetRoute }) {
 
 function Auth({ onComplete }) {
   const [mode, setMode] = React.useState("login");
+  const [username, setUsername] = React.useState("fishmaster");
+  const [email, setEmail] = React.useState("hello@fishstagram.app");
+  const [password, setPassword] = React.useState("");
+  const [error, setError] = React.useState(null);
+  const [loading, setLoading] = React.useState(false);
+
+  const handleSubmit = async () => {
+    if (!window.API) { onComplete(); return; }
+    setLoading(true);
+    setError(null);
+    try {
+      if (mode === "login") {
+        await window.API.login(email, password);
+      } else {
+        await window.API.register(username, email, password);
+      }
+      onComplete();
+    } catch (e) {
+      setError((e && e.error && e.error.message) || 'Something went wrong. Try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="auth-shell">
       <div className="auth-hero">
@@ -301,7 +407,7 @@ function Auth({ onComplete }) {
           <div className="brand-name" style={{ color: "var(--c-bg)" }}>Fishstagram</div>
         </div>
         <div>
-          <div className="word">Catch.<br/>Map.<br/>Share.</div>
+          <div className="word">Catch.<br />Map.<br />Share.</div>
           <div className="quote" style={{ marginTop: 28, opacity: 0.85 }}>
             "A bad day fishing is still better than a good day at the desk."
           </div>
@@ -320,23 +426,33 @@ function Auth({ onComplete }) {
           {mode === "register" && (
             <div className="field">
               <label>Username</label>
-              <input className="input" defaultValue="fishmaster" />
+              <input className="input" value={username} onChange={e => setUsername(e.target.value)} placeholder="fishmaster" />
             </div>
           )}
           <div className="field">
             <label>Email</label>
-            <input className="input" type="email" defaultValue="hello@fishstagram.app" />
+            <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="hello@fishstagram.app" />
           </div>
           <div className="field">
             <label>Password</label>
-            <input className="input" type="password" defaultValue="•••••••••" />
+            <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" />
           </div>
-          <button className="btn btn-primary" style={{ width: "100%", justifyContent: "center", marginTop: 8 }} onClick={onComplete}>
-            {mode === "login" ? "Log in" : "Create account"}
+          {error && (
+            <div style={{ fontSize: 13, color: "var(--c-accent)", marginBottom: 8, padding: "8px 12px", background: "rgba(200,99,63,0.08)", borderRadius: "var(--r-sm)" }}>
+              {error}
+            </div>
+          )}
+          <button
+            className="btn btn-primary"
+            style={{ width: "100%", justifyContent: "center", marginTop: 8 }}
+            onClick={handleSubmit}
+            disabled={loading}
+          >
+            {loading ? "Please wait…" : (mode === "login" ? "Log in" : "Create account")}
           </button>
           <div className="divider" />
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--c-muted)" }}>
-            <button onClick={() => setMode(mode === "login" ? "register" : "login")} style={{ color: "var(--c-brand)" }}>
+            <button onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(null); }} style={{ color: "var(--c-brand)" }}>
               {mode === "login" ? "Create an account" : "I already have one"}
             </button>
             <a href="#" style={{ color: "var(--c-muted)" }}>Forgot password</a>

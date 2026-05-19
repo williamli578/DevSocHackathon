@@ -1,6 +1,7 @@
 import express, {NextFunction, Request, Response} from 'express';
 import cors from 'cors';
 import multer from 'multer';
+import path from 'path';
 import {v4 as uuid} from 'uuid';
 import {getData} from './data';
 
@@ -13,6 +14,13 @@ const db = getData();
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+const root = path.join(__dirname, '..');
+app.use(express.static(path.join(root, 'public')));
+app.use(express.static(path.join(root, 'src')));
+app.use(express.static(path.join(root, 'src', 'screens')));
+app.use(express.static(path.join(root, 'src', 'components')));
+app.get('/', (_req, res) => res.sendFile(path.join(root, 'public', 'Fishstagram.html')));
 
 const now = () => new Date().toISOString();
 const token = (prefix: string) => `${prefix}_${uuid()}`;
@@ -154,7 +162,12 @@ app.post('/api/catches', auth, (req, res) => {
     }
     res.status(201).json({catch: c, newBadges});
 });
-app.get('/api/catches', auth, (req, res) => res.json(paginate([...db.catches.values()].filter(c => c.visibility === 'public' || c.userId === req.userId), Number(req.query.limit || 20), req.query.cursor)));
+app.get('/api/catches', auth, (req, res) => {
+    const catches = [...db.catches.values()]
+        .filter(c => c.visibility === 'public' || c.userId === req.userId)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    res.json(paginate(catches, Number(req.query.limit || 20), req.query.cursor));
+});
 app.get('/api/catches/:catchId', auth, (req, res) => {
     const c = db.catches.get(req.params.catchId);
     if (!c) return res.status(404).json({

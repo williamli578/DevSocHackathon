@@ -170,7 +170,28 @@ function LogCatch({ onClose, onSubmit }) {
 
           <div className="log-submit">
             <button className="btn btn-ghost" onClick={onClose}>Save draft</button>
-            <button className="btn btn-primary" onClick={onSubmit}>
+            <button className="btn btn-primary" onClick={async () => {
+              if (!window.API) { onSubmit(); return; }
+              const D = window.DATA;
+              const speciesOpt = D.SPECIES.find(s => s.id === speciesId);
+              try {
+                await window.API.logCatch({
+                  speciesId,
+                  speciesName: speciesOpt?.name,
+                  lengthCm: length ? Number(length) : null,
+                  weightKg: weight ? Number(weight) : null,
+                  quantity: Number(quantity) || 1,
+                  caughtAt: date || new Date().toISOString(),
+                  description,
+                  location: { latitude: -34.052, longitude: 151.152, name: locationName },
+                  visibility,
+                  shareToFeed: shareFeed && visibility === 'public',
+                });
+              } catch (e) {
+                console.error('Failed to log catch:', e);
+              }
+              onSubmit();
+            }}>
               <Ico.Plus2 width="14" height="14" />
               Log catch
             </button>

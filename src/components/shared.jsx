@@ -57,7 +57,8 @@ function PhotoPlaceholder({ label, seed = 0, dark = false }) {
 function Avatar({ user, size = "md" }) {
   if (!user) return null;
   const cls = size === "lg" ? "avatar lg" : size === "xl" ? "avatar xl" : size === "sm" ? "avatar sm" : "avatar";
-  return <div className={cls}>{user.initial}</div>;
+  const initial = user.initial || (user.username || user.name || '?')[0]?.toUpperCase() || '?';
+  return <div className={cls}>{initial}</div>;
 }
 
 function VisibilityIcon({ visibility }) {
