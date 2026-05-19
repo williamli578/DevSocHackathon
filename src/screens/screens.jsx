@@ -393,6 +393,97 @@ function Search({ onOpen, onSetRoute }) {
   );
 }
 
+function LocationSearch({ value, onChange }) {
+  const [query, setQuery] = React.useState(value || "");
+  const [suggestions, setSuggestions] = React.useState([]);
+  const [open, setOpen] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+  const containerRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const handler = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  React.useEffect(() => {
+    if (query.trim().length < 2) { setSuggestions([]); return; }
+    const timer = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const r = await fetch(
+          `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=6&addressdetails=1`,
+          { headers: { 'Accept-Language': 'en' } }
+        );
+        const data = await r.json();
+        setSuggestions(data.map(p => {
+          const a = p.address || {};
+          const parts = [a.suburb || a.village || a.city || a.town, a.state, a.country]
+            .filter(Boolean).slice(0, 2);
+          return parts.join(', ') || p.display_name.split(',').slice(0, 2).join(',').trim();
+        }).filter((v, i, arr) => arr.indexOf(v) === i));
+        setOpen(true);
+      } catch { setSuggestions([]); }
+      finally { setLoading(false); }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const select = (s) => {
+    setQuery(s);
+    onChange(s);
+    setSuggestions([]);
+    setOpen(false);
+  };
+
+  return (
+    <div ref={containerRef} style={{ position: "relative" }}>
+      <div style={{ position: "relative" }}>
+        <input
+          className="input"
+          value={query}
+          onChange={e => { setQuery(e.target.value); onChange(e.target.value); }}
+          onFocus={() => suggestions.length > 0 && setOpen(true)}
+          placeholder="Search your location…"
+          autoComplete="off"
+        />
+        {loading && (
+          <span style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--c-muted)" }}>
+            …
+          </span>
+        )}
+      </div>
+      {open && suggestions.length > 0 && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 100,
+          background: "var(--c-bg)", border: "1px solid var(--c-line-strong)",
+          borderRadius: "var(--r-md)", boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+          overflow: "hidden",
+        }}>
+          {suggestions.map((s, i) => (
+            <div
+              key={i}
+              onMouseDown={() => select(s)}
+              style={{
+                padding: "10px 14px", cursor: "pointer", fontSize: 13,
+                borderBottom: i < suggestions.length - 1 ? "1px solid var(--c-line)" : "none",
+                display: "flex", alignItems: "center", gap: 8,
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = "var(--c-surface)"}
+              onMouseLeave={e => e.currentTarget.style.background = ""}
+            >
+              <Ico.Pin width="11" height="11" style={{ color: "var(--c-muted)", flexShrink: 0 }} />
+              {s}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Auth({ onComplete }) {
   const [mode, setMode] = React.useState("login");
   const [step, setStep] = React.useState("auth"); // "auth" | "setup"
@@ -472,12 +563,7 @@ function Auth({ onComplete }) {
             </div>
             <div className="field">
               <label>Region</label>
-              <input
-                className="input"
-                value={region}
-                onChange={e => setRegion(e.target.value)}
-                placeholder="e.g. Sydney, Queensland, NZ South Island"
-              />
+              <LocationSearch value={region} onChange={setRegion} />
             </div>
             <button
               className="btn btn-primary"
