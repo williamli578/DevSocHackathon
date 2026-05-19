@@ -13,9 +13,68 @@ function LogCatch({ onClose, onSubmit }) {
     return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   });
   const [description, setDescription] = React.useState("");
-  const [locationName, setLocationName] = React.useState("Cronulla, Bate Bay");
+  const [locationName, setLocationName] = React.useState("");
+  const [lat, setLat] = React.useState(-33.8688);
+  const [lng, setLng] = React.useState(151.2093);
   const [visibility, setVisibility] = React.useState("public");
   const [shareFeed, setShareFeed] = React.useState(true);
+  const logMapRef = React.useRef(null);
+
+  const reverseGeocode = async (rlat, rlng) => {
+    try {
+      const r = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${rlat}&lon=${rlng}&format=json`,
+        { headers: { 'Accept-Language': 'en' } }
+      );
+      const d = await r.json();
+      const a = d.address || {};
+      const name = [a.suburb || a.village || a.hamlet, a.city || a.town || a.county]
+        .filter(Boolean).slice(0, 2).join(', ');
+      return name || d.display_name?.split(',').slice(0, 2).join(',').trim() || '';
+    } catch { return ''; }
+  };
+
+  React.useEffect(() => {
+    if (!logMapRef.current || !window.L) return;
+    const L = window.L;
+    const initLat = -33.8688, initLng = 151.2093;
+
+    const map = L.map(logMapRef.current, {
+      center: [initLat, initLng],
+      zoom: 11,
+      attributionControl: false,
+      scrollWheelZoom: false,
+    });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+
+    const icon = L.divIcon({
+      className: '',
+      html: `<div style="width:28px;height:28px;border-radius:50%;background:#c8633f;color:#fff;display:flex;align-items:center;justify-content:center;border:2.5px solid #fff;font-size:14px;box-shadow:0 3px 8px rgba(0,0,0,0.35);position:relative">📍<div style="position:absolute;bottom:-7px;left:50%;transform:translateX(-50%) rotate(45deg);width:10px;height:10px;background:#c8633f;border-right:2px solid #fff;border-bottom:2px solid #fff;z-index:-1"></div></div>`,
+      iconAnchor: [14, 35],
+      iconSize: [28, 35],
+    });
+
+    const marker = L.marker([initLat, initLng], { icon, draggable: true }).addTo(map);
+
+    const updatePos = async (newLat, newLng) => {
+      setLat(newLat);
+      setLng(newLng);
+      const name = await reverseGeocode(newLat, newLng);
+      if (name) setLocationName(name);
+    };
+
+    marker.on('dragend', () => {
+      const p = marker.getLatLng();
+      updatePos(p.lat, p.lng);
+    });
+    map.on('click', e => {
+      marker.setLatLng(e.latlng);
+      updatePos(e.latlng.lat, e.latlng.lng);
+    });
+
+    setTimeout(() => map.invalidateSize(), 50);
+    return () => { map.remove(); };
+  }, []);
 
   const togglePhoto = (i) => {
     const copy = [...photos];
@@ -105,29 +164,17 @@ function LogCatch({ onClose, onSubmit }) {
           {/* Location */}
           <div className="log-section">
             <h3>Where</h3>
-            <div className="help">Drop a pin or search a spot</div>
+            <div className="help">Click the map or drag the pin to set your location</div>
+            <div
+              ref={logMapRef}
+              style={{ height: 240, borderRadius: "var(--r-md)", border: "1px solid var(--c-line)", overflow: "hidden", marginBottom: 8 }}
+            />
+            <div style={{ fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--c-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 8 }}>
+              {lat.toFixed(5)}, {lng.toFixed(5)}
+            </div>
             <div className="field">
               <label>Location name</label>
-              <input className="input" placeholder="Cronulla, Bate Bay" value={locationName} onChange={(e) => setLocationName(e.target.value)} />
-            </div>
-            <div style={{
-              height: 160,
-              background: "linear-gradient(180deg,#b9d4d3,#a9c8c9)",
-              backgroundImage: "radial-gradient(ellipse at 60% 50%, rgba(193,162,109,0.6), transparent 35%)",
-              borderRadius: "var(--r-md)",
-              position: "relative",
-              border: "1px solid var(--c-line)"
-            }}>
-              <div className="pin" style={{ left: "55%", top: "50%" }}>
-                <div className="pin-dot" style={{ width: 24, height: 24, fontSize: 10 }}>NEW</div>
-              </div>
-              <span style={{
-                position: "absolute", bottom: 8, left: 10,
-                fontFamily: "var(--f-mono)", fontSize: 10, color: "var(--c-ink)", opacity: 0.7,
-                textTransform: "uppercase", letterSpacing: "0.08em"
-              }}>
-                -34.052, 151.152 · Approximate
-              </span>
+              <input className="input" placeholder="e.g. Cronulla, Bate Bay" value={locationName} onChange={(e) => setLocationName(e.target.value)} />
             </div>
           </div>
 
@@ -187,7 +234,7 @@ function LogCatch({ onClose, onSubmit }) {
                   quantity: Number(quantity) || 1,
                   caughtAt: date || new Date().toISOString(),
                   description,
-                  location: { latitude: -34.052, longitude: 151.152, name: locationName },
+                  location: { latitude: lat, longitude: lng, name: locationName },
                   visibility,
                   shareToFeed: shareFeed && visibility === 'public',
                 });

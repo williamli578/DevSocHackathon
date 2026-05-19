@@ -14,6 +14,7 @@ function App() {
   const [route, setRoute] = React.useState("feed");
   const [openId, setOpenId] = React.useState(null);
   const [likes, setLikes] = React.useState({ c_4: true });
+  const [catchCount, setCatchCount] = React.useState(0);
   const tweaks = window.useTweaks ? window.useTweaks(TWEAK_DEFAULTS) : [TWEAK_DEFAULTS, () => {}];
   const t = tweaks[0];
   const setTweak = tweaks[1];
@@ -44,9 +45,9 @@ function App() {
   if (route === "feed") {
     content = <Feed density={t.density} showStats={t.showStats} onOpen={setOpenId} likes={likes} onLike={onLike} onSetRoute={setRoute} />;
   } else if (route === "map") {
-    content = <MapView mapStyle={t.mapStyle} onOpen={setOpenId} />;
+    content = <MapView mapStyle={t.mapStyle} onOpen={setOpenId} refreshKey={catchCount} />;
   } else if (route === "log") {
-    content = <LogCatch onClose={() => setRoute("feed")} onSubmit={() => setRoute("feed")} />;
+    content = <LogCatch onClose={() => setRoute("feed")} onSubmit={() => { setCatchCount(n => n + 1); setRoute("feed"); }} />;
   } else if (route === "profile") {
     content = <Profile onOpen={setOpenId} showStats={t.showStats} density={t.density} />;
   } else if (route === "leaderboard") {
