@@ -1,27 +1,42 @@
 // Profile screen
 
-function Profile({ viewer, onOpen, showStats, density }) {
+function Profile({ viewer, userId, onOpen, showStats, density }) {
   const D = window.DATA;
   const [tab, setTab] = React.useState("catches");
   const [apiUser, setApiUser] = React.useState(null);
   const [apiBadges, setApiBadges] = React.useState(null);
+  const isOwnProfile = !userId || userId === viewer?.id || userId === (window.API && window.API.getUserId());
+
+  const isMockUser = userId && userId.startsWith("u_");
 
   React.useEffect(() => {
+    setTab("catches");
+    setApiUser(null);
+    setApiBadges(null);
     if (!window.API) return;
-    window.API.getMe().then(u => {
-      setApiUser(u);
-      return window.API.getUserBadges(u.id || window.API.getUserId());
-    }).then(data => {
-      setApiBadges(data && data.items ? data.items : []);
-    }).catch(() => { setApiBadges([]); });
-  }, []);
+    if (isOwnProfile) {
+      window.API.getMe().then(u => {
+        setApiUser(u);
+        return window.API.getUserBadges(u.id || window.API.getUserId());
+      }).then(data => {
+        setApiBadges(data && data.items ? data.items : []);
+      }).catch(() => { setApiBadges([]); });
+    } else if (!isMockUser) {
+      window.API.getUser(userId).then(u => {
+        setApiUser(u);
+        return window.API.getUserBadges(userId);
+      }).then(data => {
+        setApiBadges(data && data.items ? data.items : []);
+      }).catch(() => { setApiBadges([]); });
+    }
+  }, [userId]);
 
   // When API user exists, use only API data — never fall back to mock stats
   const user = React.useMemo(() => {
     if (apiUser) {
       const handle = apiUser.username || apiUser.name || "angler";
       return {
-        id: apiUser.id || (window.API && window.API.getUserId()),
+        id: apiUser.id || userId,
         name: apiUser.username || apiUser.name || "Angler",
         handle,
         initial: handle[0].toUpperCase(),
@@ -34,8 +49,8 @@ function Profile({ viewer, onOpen, showStats, density }) {
         points: apiUser.points ?? 0,
       };
     }
-    return viewer || D.userById("u_you");
-  }, [apiUser, viewer]);
+    return (userId ? D.userById(userId) : null) || viewer || D.userById("u_you");
+  }, [apiUser, viewer, userId]);
 
   const userCatches = D.CATCHES.filter((c) => c.userId === user.id);
   const badges = apiBadges !== null
@@ -79,7 +94,10 @@ function Profile({ viewer, onOpen, showStats, density }) {
             </div>
           </div>
           <div className="profile-actions">
-            <button className="btn btn-primary">Edit Profile</button>
+            {isOwnProfile
+              ? <button className="btn btn-primary">Edit Profile</button>
+              : <button className="btn btn-primary" onClick={() => window.API && window.API.follow(user.id).catch(() => {})}>Follow</button>
+            }
             <button className="btn btn-ghost" style={{ background: "var(--c-surface)" }}>Share</button>
           </div>
         </div>

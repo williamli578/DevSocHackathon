@@ -13,6 +13,12 @@ function App() {
   const [authed, setAuthed] = React.useState(false);
   const [route, setRoute] = React.useState("feed");
   const [openId, setOpenId] = React.useState(null);
+  const [profileUserId, setProfileUserId] = React.useState(null);
+
+  const setRouteWithUser = React.useCallback((r, uid = null) => {
+    setRoute(r);
+    if (r === "profile") setProfileUserId(uid);
+  }, []);
   const [likes, setLikes] = React.useState({ c_4: true });
   const [catchCount, setCatchCount] = React.useState(0);
   const tweaks = window.useTweaks ? window.useTweaks(TWEAK_DEFAULTS) : [TWEAK_DEFAULTS, () => {}];
@@ -71,23 +77,23 @@ function App() {
 
   let content;
   if (route === "feed") {
-    content = <Feed density={t.density} showStats={t.showStats} onOpen={setOpenId} likes={likes} onLike={onLike} onSetRoute={setRoute} />;
+    content = <Feed density={t.density} showStats={t.showStats} onOpen={setOpenId} likes={likes} onLike={onLike} onSetRoute={setRouteWithUser} />;
   } else if (route === "map") {
     content = <MapView mapStyle={t.mapStyle} onOpen={setOpenId} refreshKey={catchCount} />;
   } else if (route === "log") {
     content = <LogCatch onClose={() => setRoute("feed")} onSubmit={() => { setCatchCount(n => n + 1); setRoute("feed"); }} />;
   } else if (route === "profile") {
-    content = <Profile viewer={viewer} onOpen={setOpenId} showStats={t.showStats} density={t.density} />;
+    content = <Profile viewer={viewer} userId={profileUserId} onOpen={setOpenId} showStats={t.showStats} density={t.density} />;
   } else if (route === "leaderboard") {
     content = <Leaderboard />;
   } else if (route === "badges") {
     content = <Badges />;
   } else if (route === "notifications") {
-    content = <Notifications onOpen={setOpenId} onSetRoute={setRoute} />;
+    content = <Notifications onOpen={setOpenId} onSetRoute={setRouteWithUser} />;
   } else if (route === "search") {
-    content = <Search onOpen={setOpenId} onSetRoute={setRoute} />;
+    content = <Search onOpen={setOpenId} onSetRoute={setRouteWithUser} />;
   } else if (route === "communities") {
-    content = <Communities onOpen={setOpenId} density={t.density} showStats={t.showStats} likes={likes} onLike={onLike} onSetRoute={setRoute} />;
+    content = <Communities onOpen={setOpenId} density={t.density} showStats={t.showStats} likes={likes} onLike={onLike} onSetRoute={setRouteWithUser} />;
   } else if (route === "messages") {
     content = <Messages onOpen={setOpenId} />;
   }
@@ -97,7 +103,7 @@ function App() {
       <div className="app-shell">
         <Sidebar
           route={route}
-          setRoute={setRoute}
+          setRoute={setRouteWithUser}
           onLog={() => setRoute("log")}
           unread={unread}
           viewer={viewer}

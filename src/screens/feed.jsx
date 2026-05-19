@@ -202,7 +202,7 @@ function Feed({ density, showStats, onOpen, likes, onLike, onSetRoute }) {
           <div className="rail-card">
             <h4>Who to follow</h4>
             {suggested.map(u => (
-              <FollowRow key={u.id} user={u} onClick={() => onSetRoute("profile")} />
+              <FollowRow key={u.id} user={u} onClick={() => onSetRoute("profile", u.id)} />
             ))}
           </div>
           <div className="rail-card">

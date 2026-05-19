@@ -332,7 +332,7 @@ function Search({ onOpen, onSetRoute }) {
                   <h4 style={{ padding: "12px 16px 0", margin: 0 }}>Anglers</h4>
                   <div style={{ padding: "8px 16px 12px" }}>
                     {users.slice(0, 5).map(u => (
-                      <div className="follow-row" key={u.id} onClick={() => onSetRoute("profile")} style={{ cursor: "pointer" }}>
+                      <div className="follow-row" key={u.id} onClick={() => onSetRoute("profile", u.id)} style={{ cursor: "pointer" }}>
                         <Avatar user={u} />
                         <div className="who">
                           <div className="name">{u.name}</div>
